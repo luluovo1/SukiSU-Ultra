@@ -19,6 +19,7 @@
 #include <linux/hex.h>
 #endif
 
+#include "feature/dynamic_manager.h"
 #include "manager/apk_sign.h"
 #include "uapi/app_profile.h"
 #include "klog.h" // IWYU pragma: keep
@@ -354,8 +355,19 @@ bool is_manager_apk(char *path)
         return true;
     }
 #ifdef EXPECTED_SIZE2
-    return check_v2_signature(path, EXPECTED_SIZE2, EXPECTED_HASH2);
-#else
-    return false;
+    if (check_v2_signature(path, EXPECTED_SIZE2, EXPECTED_HASH2)) {
+        return true;
+    }
 #endif
+
+    /* dynamic manager signature (runtime-updatable via ioctl) */
+    unsigned int dyn_size = 0;
+    char dyn_hash[65];
+
+    if (ksu_get_dynamic_manager_signature(&dyn_size, dyn_hash, sizeof(dyn_hash)) &&
+        check_v2_signature(path, dyn_size, dyn_hash)) {
+        return true;
+    }
+
+    return false;
 }

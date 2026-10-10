@@ -24,6 +24,7 @@
 #include "supercall/supercall.h"
 #include "feature/uts_spoof.h"
 #include "feature/cpu_spoof.h"
+#include "feature/dynamic_manager.h"
 
 #ifdef CONFIG_KPM
 #include "kpm/kpm.h"
@@ -884,6 +885,33 @@ static int do_enable_kpm(void __user *arg)
     return 0;
 }
 
+// 106. DYNAMIC_MANAGER - runtime manager signature (set/get/wipe)
+static int do_dynamic_manager(void __user *arg)
+{
+#ifdef CONFIG_KSU_DISABLE_MANAGER
+    return -EOPNOTSUPP;
+#else
+    struct ksu_dynamic_manager_cmd cmd;
+
+    if (copy_from_user(&cmd, arg, sizeof(cmd))) {
+        pr_err("dynamic_manager: copy_from_user failed\n");
+        return -EFAULT;
+    }
+
+    int ret = ksu_handle_dynamic_manager(&cmd);
+    if (ret) {
+        return ret;
+    }
+
+    if (cmd.operation == DYNAMIC_MANAGER_OP_GET && copy_to_user(arg, &cmd, sizeof(cmd))) {
+        pr_err("dynamic_manager: copy_to_user failed\n");
+        return -EFAULT;
+    }
+
+    return 0;
+#endif
+}
+
 // IOCTL handlers mapping table
 // clang-format off
 static const struct ksu_ioctl_cmd_map ksu_ioctl_handlers[] = {
@@ -1076,6 +1104,12 @@ static const struct ksu_ioctl_cmd_map ksu_ioctl_handlers[] = {
         .name = "LIST_TRY_UMOUNT",
         .handler = list_try_umount,
         .perm_check = manager_or_root
+    },
+    {
+        .cmd = KSU_IOCTL_DYNAMIC_MANAGER,
+        .name = "DYNAMIC_MANAGER",
+        .handler = do_dynamic_manager,
+        .perm_check = only_root
     },
     {
         .cmd = 0,

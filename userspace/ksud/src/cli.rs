@@ -11,8 +11,8 @@ use crate::module::regenerate_preinit_rc;
 #[cfg(target_arch = "aarch64")]
 use crate::susfs;
 use crate::{
-    apk_sign, assets, debug, defs, init_event, ksu_uapi, ksucalls, module, module_config, sulog,
-    umount, utils,
+    apk_sign, assets, debug, defs, dynamic_manager, init_event, ksu_uapi, ksucalls, module,
+    module_config, sulog, umount, utils,
 };
 
 /// KernelSU userspace cli
@@ -534,6 +534,36 @@ enum Kernel {
         #[arg(long, value_parser = parse_hex_u64, default_value_t = 0)]
         hwcap2: u64,
     },
+    /// Manage dynamic manager signature
+    DynamicManager {
+        #[command(subcommand)]
+        command: DynamicManagerOp,
+    },
+}
+
+#[derive(clap::Subcommand, Debug)]
+enum DynamicManagerOp {
+    /// Get the signature of the current dynamic manager (size+hash)
+    Get {
+        /// output as JSON
+        #[arg(long)]
+        internal: Option<bool>,
+    },
+    /// Set the signature of the dynamic manager
+    Set {
+        /// the signature size
+        size: u32,
+        /// the signature hash
+        #[arg(value_parser = dynamic_manager::parse_hash)]
+        hash: [u8; 64],
+    },
+    /// Set the signature of the dynamic manager for apk
+    SetApk {
+        /// the apk path
+        apk: String,
+    },
+    /// Clear the dynamic manager
+    Clear,
 }
 
 #[derive(clap::Subcommand, Debug)]
@@ -1120,6 +1150,28 @@ pub fn run() -> Result<()> {
                 hwcap,
                 hwcap2,
             } => ksucalls::set_spoof_cpu(cpu, midr, bogomips, hwcap, hwcap2),
+            Kernel::DynamicManager { command } => match command {
+                DynamicManagerOp::Set { size, hash } => dynamic_manager::set(size, hash),
+                DynamicManagerOp::Get { internal } => {
+                    let (size, hash) = ksucalls::dynamic_manager_get()?;
+                    let hash_str = String::from_utf8_lossy(&hash);
+                    if internal.is_some_and(|s| s) {
+                        let json = serde_json::json!({"size": size, "hash": hash_str});
+                        println!("{}", serde_json::to_string_pretty(&json)?);
+                    } else {
+                        println!("size: {size}, hash: {hash_str}");
+                    }
+                    Ok(())
+                }
+                DynamicManagerOp::SetApk { apk } => {
+                    let sign = apk_sign::get_apk_signature(&apk)?;
+                    let bytes = sign.1.as_bytes();
+                    let mut hash = [0u8; 64];
+                    hash.copy_from_slice(bytes);
+                    dynamic_manager::set(sign.0, hash)
+                }
+                DynamicManagerOp::Clear => dynamic_manager::clear(),
+            },
         },
         Commands::Initrc { command } => match command {
             Initrc::Refresh => regenerate_preinit_rc(),

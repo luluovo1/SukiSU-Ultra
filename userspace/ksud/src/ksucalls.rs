@@ -448,3 +448,43 @@ pub fn set_spoof_cpu(
     ksuctl(ksu_uapi::KSU_IOCTL_SET_SPOOF_CPU, &raw mut cmd)?;
     Ok(())
 }
+
+pub fn dynamic_manager_set(size: u32, hash: [u8; 64]) -> anyhow::Result<()> {
+    let mut cmd = ksu_uapi::ksu_dynamic_manager_cmd {
+        operation: ksu_uapi::DYNAMIC_MANAGER_OP_SET,
+        size,
+        hash,
+    };
+    ksuctl(ksu_uapi::KSU_IOCTL_DYNAMIC_MANAGER, &raw mut cmd)?;
+    Ok(())
+}
+
+pub fn dynamic_manager_set_synchronous(size: u32, hash: [u8; 64]) -> anyhow::Result<()> {
+    let mut cmd = ksu_uapi::ksu_dynamic_manager_cmd {
+        operation: ksu_uapi::DYNAMIC_MANAGER_OP_SET_SYNCHRONOUS,
+        size,
+        hash,
+    };
+    ksuctl(ksu_uapi::KSU_IOCTL_DYNAMIC_MANAGER, &raw mut cmd)?;
+    Ok(())
+}
+
+pub fn dynamic_manager_get() -> anyhow::Result<(u32, [u8; 64])> {
+    let mut cmd = ksu_uapi::ksu_dynamic_manager_cmd {
+        operation: ksu_uapi::DYNAMIC_MANAGER_OP_GET,
+        size: 0,
+        hash: [0; 64],
+    };
+    ksuctl(ksu_uapi::KSU_IOCTL_DYNAMIC_MANAGER, &raw mut cmd)?;
+    Ok((cmd.size, cmd.hash))
+}
+
+pub fn dynamic_manager_clear() -> anyhow::Result<()> {
+    let mut cmd = ksu_uapi::ksu_dynamic_manager_cmd {
+        operation: ksu_uapi::DYNAMIC_MANAGER_OP_WIPE,
+        size: 0,
+        hash: [0; 64],
+    };
+    ksuctl(ksu_uapi::KSU_IOCTL_DYNAMIC_MANAGER, &raw mut cmd)?;
+    Ok(())
+}

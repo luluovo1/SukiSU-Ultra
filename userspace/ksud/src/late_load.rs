@@ -4,7 +4,7 @@ use std::fmt::Write as FmtWrite;
 use std::{process::Command, time::Instant};
 
 use crate::module::{ScriptWait, handle_updated_modules, prune_modules};
-use crate::{assets, defs, init_event, metamodule, restorecon, utils};
+use crate::{assets, defs, dynamic_manager, init_event, metamodule, restorecon, utils};
 
 fn dump_process_info(label: &str) {
     use rustix::process::{getgid, getgroups, getpid, getuid};
@@ -133,6 +133,11 @@ pub fn run(
     // 7. Initialize features
     if let Err(e) = crate::feature::init_features() {
         warn!("init features failed: {e}");
+    }
+
+    // Replay the persisted dynamic manager signature (fresh kernel state)
+    if let Err(e) = dynamic_manager::booted_load() {
+        warn!("set dynamic manager failed: {e}");
     }
 
     // 8. Execute late-load stage scripts with a shared boot deadline
