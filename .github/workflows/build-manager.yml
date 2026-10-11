@@ -299,6 +299,8 @@ jobs:
 
           find . -type f -exec sed -i \
             -e "s/KernelSUApplication/${word5}Application/g" \
+            -e "s/KernelSU/${word5}/g" \
+            -e "s/SukiSU/${word10}/g" \
             -e "s/AppZygotePreload/${word6}Preload/g" \
             -e "s/libksud\.so/lib${word7}.so/g" \
             -e "s/System\.loadLibrary(\"kernelsu\")/System.loadLibrary(\"${word8}\")/g" \
@@ -312,20 +314,25 @@ jobs:
             -e "s/magica bootstrap/${word12} bootstrap/g" \
             -e "s/exec magica/exec ${word12}/g" \
             -e "s/executing magica/executing ${word12}/g" \
+            -e "s/forkDontCareAndExecKsud/forkDontCareAndExec${word8}/g" \
             {} +
 
           # Rename the CMake native targets (libkernelsu.so / libadbroot.so).
           sed -i \
-            -e "s/add_library(kernelsu /add_library(${word8} /" \
+            -e "s/project(\"kernelsu\")/project(\"${word8}\")/" \
+            -e "s/add_library(kernelsu/add_library(${word8}/" \
             -e "s/target_include_directories(kernelsu /target_include_directories(${word8} /" \
             -e "s/target_link_libraries(kernelsu /target_link_libraries(${word8} /" \
             -e "s/add_library(adbroot /add_library(${word9} /" \
             -e "s/target_link_libraries(adbroot /target_link_libraries(${word9} /" \
             app/src/main/cpp/CMakeLists.txt
 
-          # Randomize the app label and hide the commit-hash version name.
+          # Randomize the app label (app module) and hide the commit-hash
+          # version name (root module).
           sed -i \
             -e "s/val defaultManagerName = .*/val defaultManagerName = \"${word10}\"/" \
+            app/build.gradle.kts
+          sed -i \
             -e "s/return getGitDescribe()/return \"4.2.0\"/" \
             build.gradle.kts
 
