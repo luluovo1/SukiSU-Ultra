@@ -1,6 +1,7 @@
 package com.sukisu.ultra.ui.screen.home
 
 import androidx.compose.runtime.Immutable
+import com.sukisu.ultra.BuildConfig
 import com.sukisu.ultra.KernelVersion
 import com.sukisu.ultra.ui.util.module.LatestVersionInfo
 import kotlin.math.abs
@@ -34,15 +35,25 @@ data class HomeUiState(
         get() = ksuVersion != null && lkmMode == false
 
     val showLkmUpdate: Boolean
-        get() = isManager &&
-                lkmMode == true &&
-                isLkmBundled &&
-                // Same commit can yield a 1-off versionCode: the kernel counts
-                // commits via the GitHub API while the manager uses git rev-list.
-                // Only warn when the gap is larger than that known skew.
-                (ksuVersion?.let { abs(it.toLong() - currentManagerVersionCode) > 1L } == true) &&
-                !requiresNewKernel &&
-                !requiresNewManager
+        get() {
+            if (!isManager || lkmMode != true || !isLkmBundled) return false
+            if (requiresNewKernel || requiresNewManager) return false
+            // If the running kernel was built from the same kernel-source
+            // commit as this manager APK, a manager-only update must not
+            // prompt for a kernel reflash.
+            val kernelFull = systemInfo.kernelFullVersion
+            if (!kernelFull.isNullOrBlank()) {
+                val kernelCommit = kernelFull.substringAfterLast('-').substringBefore('@')
+                if (kernelCommit.isNotBlank() && kernelCommit == BuildConfig.KERNEL_COMMIT) {
+                    return false
+                }
+            }
+            // Same commit can yield a 1-off versionCode: the kernel counts
+            // commits via the GitHub API while the manager uses git rev-list.
+            // Only warn when the gap is larger than that known skew.
+            val kernel = ksuVersion ?: return false
+            return abs(kernel.toLong() - currentManagerVersionCode) > 1L
+        }
 
     // Jailbreak mode runs on locked bootloaders, so flashing a boot image would brick the device.
     val canInstallKernelUpdate: Boolean

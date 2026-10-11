@@ -28,6 +28,20 @@ val defaultManagerName = if (isPrBuild) "SukiSU PR" else "SukiSU"
 val managerPackageName = project.findProperty("KSU_PACKAGE_NAME")?.toString() ?: defaultManagerPackageName
 val managerName = project.findProperty("KSU_NAME")?.toString() ?: defaultManagerName
 
+// Commit that last touched the kernel sources; embedded so the manager can
+// tell whether the running kernel really predates the bundled LKM.
+fun getKernelCommit(): String {
+    return try {
+        val process = Runtime.getRuntime().exec(
+            arrayOf("git", "log", "-1", "--format=%h", "--abbrev=8", "--", "../kernel")
+        )
+        process.inputStream.bufferedReader().use { it.readText().trim() }
+    } catch (e: Exception) {
+        ""
+    }
+}
+val kernelCommit = getKernelCommit()
+
 apksign {
     storeFileProperty = "KEYSTORE_FILE"
     storePasswordProperty = "KEYSTORE_PASSWORD"
@@ -149,6 +163,7 @@ android {
         applicationId = managerPackageName
 
         buildConfigField("boolean", "IS_PR_BUILD", isPrBuild.toString())
+        buildConfigField("String", "KERNEL_COMMIT", "\"$kernelCommit\"")
         resValue("string", "app_name", managerName)
 
         externalNativeBuild {
