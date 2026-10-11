@@ -216,18 +216,25 @@ def collect_existing_arches(apk_path: Path) -> List[str]:
     return arches
 
 
-def collect_existing_ksud_arches(apk_path: Path) -> List[str]:
-    arches = []
-    seen = set()
+def find_ksud_lib_entries(apk_path: Path) -> Dict[str, str]:
+    """Map arch -> ksud library entry name inside the APK.
+
+    The ksud library is by far the largest .so in the APK (multi-MB versus
+    a few KB for the other JNI libraries), and spoofed builds randomize its
+    file name, so detect it by size instead of by a fixed name.
+    """
+    result: Dict[str, str] = {}
     with ZipFile(apk_path, "r") as zin:
-        for name in zin.namelist():
-            if not (name.startswith("lib/") and name.endswith("/libksud.so")):
+        for info in zin.infolist():
+            name = info.filename
+            if not (name.startswith("lib/") and name.endswith(".so")):
+                continue
+            if info.file_size < 1_000_000:
                 continue
             parts = name.split("/")
-            if len(parts) >= 3 and parts[1] and parts[1] not in seen:
-                seen.add(parts[1])
-                arches.append(parts[1])
-    return arches
+            if len(parts) >= 3 and parts[1]:
+                result.setdefault(parts[1], name)
+    return result
 
 
 def strip_binary(src: Path, strip_tool: Path, tmp_dir: Path) -> bytes:
@@ -252,6 +259,8 @@ def repack_apk(
             else:
                 ksud_bytes_by_arch[arch] = ksud_path.read_bytes()
 
+        ksud_entries = find_ksud_lib_entries(apk_path)
+
         with ZipFile(apk_path, "r") as zin, ZipFile(out_unsigned_path, "w") as zout:
             for info in zin.infolist():
                 name = info.filename
@@ -261,10 +270,15 @@ def repack_apk(
                     if len(parts) >= 3 and parts[1] not in arch_filters:
                         continue
 
-                # Drop original libksud.so only for arches that have a replacement binary.
-                if name.startswith("lib/") and name.endswith("/libksud.so"):
+                # Drop the original ksud library only for arches that have a
+                # replacement binary (its name may be randomized by spoofing).
+                if name.startswith("lib/") and name.endswith(".so"):
                     parts = name.split("/")
-                    if len(parts) >= 3 and parts[1] in ksud_bytes_by_arch:
+                    if (
+                        len(parts) >= 3
+                        and parts[1] in ksud_bytes_by_arch
+                        and ksud_entries.get(parts[1]) == name
+                    ):
                         continue
 
                 data = zin.read(name)
@@ -283,19 +297,26 @@ def repack_apk(
                 ksud_bytes = ksud_bytes_by_arch.get(arch)
                 if ksud_bytes is None:
                     continue
-                lib_path = f"lib/{arch}/libksud.so"
+                lib_path = ksud_entries.get(arch)
+                if lib_path is None:
+                    # Arch only present during repack (e.g. riscv64): reuse
+                    # the (possibly randomized) library file name.
+                    basename = next(
+                        (entry.rsplit("/", 1)[-1] for entry in ksud_entries.values()),
+                        "libksud.so",
+                    )
+                    lib_path = f"lib/{arch}/{basename}"
                 entry = ZipInfo(filename=lib_path)
                 entry.compress_type = ZIP_DEFLATED
                 zout.writestr(entry, ksud_bytes)
 
 
 def assert_required_libs(apk_path: Path, arch_filters: List[str]) -> None:
-    with ZipFile(apk_path, "r") as zf:
-        names = set(zf.namelist())
-    missing = [arch for arch in arch_filters if f"lib/{arch}/libksud.so" not in names]
+    ksud_entries = find_ksud_lib_entries(apk_path)
+    missing = [arch for arch in arch_filters if arch not in ksud_entries]
     if missing:
         raise RuntimeError(
-            "Missing libksud.so in APK for architecture(s): " + ", ".join(missing)
+            "Missing ksud library in APK for architecture(s): " + ", ".join(missing)
         )
 
 
@@ -333,17 +354,17 @@ def do_repack(args: argparse.Namespace) -> int:
     ksud_by_arch = find_ksud_binaries_by_arch(cfg["ksud_build_type"], arch_filters)
     missing_ksud_arches = [arch for arch in arch_filters if arch not in ksud_by_arch]
     if missing_ksud_arches:
-        existing_ksud_arches = set(collect_existing_ksud_arches(apk))
+        existing_ksud_arches = set(find_ksud_lib_entries(apk))
         missing_in_apk = [arch for arch in missing_ksud_arches if arch not in existing_ksud_arches]
         if missing_in_apk:
             raise RuntimeError(
-                "ksud binary not found and APK has no existing libksud.so for architecture(s): "
+                "ksud binary not found and APK has no existing ksud library for architecture(s): "
                 + ", ".join(missing_in_apk)
             )
         print(
             "[WARN] ksud binary not found for architecture(s): "
             + ", ".join(missing_ksud_arches)
-            + ". Using existing libksud.so from input APK.",
+            + ". Using existing ksud library from input APK.",
             file=sys.stderr,
         )
 

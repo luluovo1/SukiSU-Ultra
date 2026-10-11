@@ -228,15 +228,22 @@ jobs:
 
           echo "Building spoofed Manager"
 
-          # Generate four random lowercase words.
+          # Generate eleven random lowercase words.
           word1=$(tr -dc 'a-z' </dev/urandom | head -c6)
           word2=$(tr -dc 'a-z' </dev/urandom | head -c6)
           word3=$(tr -dc 'a-z' </dev/urandom | head -c6)
           word4=$(tr -dc 'a-z' </dev/urandom | head -c6)
+          word5=$(tr -dc 'a-z' </dev/urandom | head -c6)
+          word6=$(tr -dc 'a-z' </dev/urandom | head -c6)
+          word7=$(tr -dc 'a-z' </dev/urandom | head -c6)
+          word8=$(tr -dc 'a-z' </dev/urandom | head -c6)
+          word9=$(tr -dc 'a-z' </dev/urandom | head -c6)
+          word10=$(tr -dc 'a-z' </dev/urandom | head -c6)
+          word11=$(tr -dc 'a-z' </dev/urandom | head -c6)
 
           echo "Generated randomized package components."
 
-          export word1 word2 word3 word4
+          export word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11
 
           # Rename package directories.
           find . -depth -type d -name 'com' \
@@ -251,6 +258,22 @@ jobs:
           find . -depth -type d -name 'io' \
             -execdir mv {} "$word4" \;
 
+          # Rename feature-bearing class files.
+          find . -depth -type f -name 'KernelSUApplication.kt' \
+            -execdir mv {} "${word5}Application.kt" \;
+
+          find . -depth -type f -name 'AppZygotePreload.java' \
+            -execdir mv {} "${word6}Preload.java" \;
+
+          find . -depth -type f -name 'MainActivity.kt' \
+            -execdir mv {} "${word11}Activity.kt" \;
+
+          find . -depth -type f -name 'MainActivityUiState.kt' \
+            -execdir mv {} "${word11}ActivityUiState.kt" \;
+
+          find . -depth -type f -name 'MainActivityViewModel.kt' \
+            -execdir mv {} "${word11}ActivityViewModel.kt" \;
+
           # Replace package references inside files.
           find . -type f -exec sed -i \
             -e "s/com\.sukisu\.ultra/$word1.$word2.$word3/g" \
@@ -262,10 +285,36 @@ jobs:
             -e "s/com_sukisu_ultra/${word1}_${word2}_${word3}/g" \
             {} +
 
-          # Add -spoofed to getGitDescribe().
+          # --- Detection-surface scrubbing ---
+          # The package rename above leaves feature-bearing identifiers in
+          # class names, native library names and the app label. Scrub them
+          # so scanners cannot fingerprint the manager by these names.
+
+          find . -type f -exec sed -i \
+            -e "s/KernelSUApplication/${word5}Application/g" \
+            -e "s/AppZygotePreload/${word6}Preload/g" \
+            -e "s/libksud\.so/lib${word7}.so/g" \
+            -e "s/System\.loadLibrary(\"kernelsu\")/System.loadLibrary(\"${word8}\")/g" \
+            -e "s/MainActivity/${word11}Activity/g" \
+            {} +
+
+          # Rename the CMake native targets (libkernelsu.so / libadbroot.so).
           sed -i \
-            -e '/fun getGitDescribe(): String {/,/^    }/ s/\.trim()$/.trim() + "-spoofed"/' \
+            -e "s/add_library(kernelsu /add_library(${word8} /" \
+            -e "s/target_include_directories(kernelsu /target_include_directories(${word8} /" \
+            -e "s/target_link_libraries(kernelsu /target_link_libraries(${word8} /" \
+            -e "s/add_library(adbroot /add_library(${word9} /" \
+            -e "s/target_link_libraries(adbroot /target_link_libraries(${word9} /" \
+            app/src/main/cpp/CMakeLists.txt
+
+          # Randomize the app label and hide the commit-hash version name.
+          sed -i \
+            -e "s/val defaultManagerName = .*/val defaultManagerName = \"${word10}\"/" \
+            -e "s/return getGitDescribe()/return \"4.2.0\"/" \
             build.gradle.kts
+
+          # Export the randomized ksud library name for the jniLibs copy step.
+          echo "KSUD_LIB_NAME=lib${word7}.so" >> "$GITHUB_ENV"
 
           echo "Randomization complete."
 
@@ -375,14 +424,18 @@ jobs:
           test -n "$ARM_KSUD"
           test -n "$X86_64_KSUD"
 
+          # Spoofed builds export a randomized library name via the
+          # randomizer step; normal builds keep the default name.
+          KSUD_LIB=${KSUD_LIB_NAME:-libksud.so}
+
           cp -f "$ARM64_KSUD" \
-            app/src/main/jniLibs/arm64-v8a/libksud.so
+            app/src/main/jniLibs/arm64-v8a/$KSUD_LIB
 
           cp -f "$ARM_KSUD" \
-            app/src/main/jniLibs/armeabi-v7a/libksud.so
+            app/src/main/jniLibs/armeabi-v7a/$KSUD_LIB
 
           cp -f "$X86_64_KSUD" \
-            app/src/main/jniLibs/x86_64/libksud.so
+            app/src/main/jniLibs/x86_64/$KSUD_LIB
 
 
       # --------------------------------------------------------
