@@ -421,6 +421,29 @@
     <string name="confirm_uninstall_content">以下 KPM 将被卸载：%s</string>
     <string name="snackbar_failed_to_check_module_file">无法检查模块文件是否存在</string>
     <string name="cancel">取消</string>
+    <!-- Dynamic manager -->
+    <string name="settings_dynamic_manager">动态管理器签名</string>
+    <string name="settings_dynamic_manager_summary">运行时注册自定义 APK 签名</string>
+    <string name="dynamic_manager_title">动态管理器签名</string>
+    <string name="dynamic_manager_status_title">当前签名</string>
+    <string name="dynamic_manager_not_set">未设置</string>
+    <string name="dynamic_manager_loading">加载中…</string>
+    <string name="dynamic_manager_from_apk">从 APK 注册</string>
+    <string name="dynamic_manager_from_apk_summary">选择 APK 文件并注册其签名证书</string>
+    <string name="dynamic_manager_manual">手动设置</string>
+    <string name="dynamic_manager_manual_summary">输入证书大小与 SHA-256 哈希</string>
+    <string name="dynamic_manager_clear">清除</string>
+    <string name="dynamic_manager_clear_summary">移除已注册的动态签名</string>
+    <string name="dynamic_manager_clear_confirm_title">清除动态签名？</string>
+    <string name="dynamic_manager_clear_confirm_message">已注册的动态签名将被移除。</string>
+    <string name="dynamic_manager_size_label">证书大小（字节）</string>
+    <string name="dynamic_manager_hash_label">SHA-256 哈希（64 位十六进制）</string>
+    <string name="dynamic_manager_apply">应用</string>
+    <string name="dynamic_manager_success">动态签名已更新</string>
+    <string name="dynamic_manager_cleared">动态签名已清除</string>
+    <string name="dynamic_manager_failed">操作失败（需要 root 权限）</string>
+    <string name="dynamic_manager_invalid_input">大小或哈希格式错误</string>
+    <string name="dynamic_manager_note">注册的签名与内置签名并存，重启后依然生效。应用更改需要 root 权限。</string>
     <!-- Tools -->
     <string name="settings_tools">工具</string>
     <string name="settings_tools_summary">更多高级功能</string>

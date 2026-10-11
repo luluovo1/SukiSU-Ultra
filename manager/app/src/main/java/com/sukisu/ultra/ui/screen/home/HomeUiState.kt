@@ -3,6 +3,7 @@ package com.sukisu.ultra.ui.screen.home
 import androidx.compose.runtime.Immutable
 import com.sukisu.ultra.KernelVersion
 import com.sukisu.ultra.ui.util.module.LatestVersionInfo
+import kotlin.math.abs
 
 @Immutable
 data class HomeUiState(
@@ -36,7 +37,10 @@ data class HomeUiState(
         get() = isManager &&
                 lkmMode == true &&
                 isLkmBundled &&
-                ksuVersion?.toLong() != currentManagerVersionCode &&
+                // Same commit can yield a 1-off versionCode: the kernel counts
+                // commits via the GitHub API while the manager uses git rev-list.
+                // Only warn when the gap is larger than that known skew.
+                (ksuVersion?.let { abs(it.toLong() - currentManagerVersionCode) > 1L } == true) &&
                 !requiresNewKernel &&
                 !requiresNewManager
 

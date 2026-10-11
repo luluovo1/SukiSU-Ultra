@@ -265,6 +265,29 @@ fun SettingPagerMiuix(
                         }
                     }
 
+                    val dynamicManagerTitle = stringResource(id = R.string.settings_dynamic_manager)
+                    Card(
+                        modifier = Modifier
+                            .padding(top = 12.dp)
+                            .fillMaxWidth()
+                    ) {
+                        ArrowPreference(
+                            title = dynamicManagerTitle,
+                            summary = stringResource(id = R.string.settings_dynamic_manager_summary),
+                            startAction = {
+                                Icon(
+                                    Icons.Rounded.Security,
+                                    modifier = Modifier.padding(end = 6.dp),
+                                    contentDescription = dynamicManagerTitle,
+                                    tint = colorScheme.onBackground
+                                )
+                            },
+                            onClick = {
+                                actions.onOpenDynamicManager()
+                            }
+                        )
+                    }
+
                     if (isKpmAvailable) {
                         Card(
                             modifier = Modifier

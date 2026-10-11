@@ -794,6 +794,65 @@ fun spoofCpu(
     return result
 }
 
+// === Dynamic manager signature (runtime-registered manager APK signature) ===
+
+private fun quoteShellArg(value: String): String = "'${value.replace("'", "'\\''")}'"
+
+/**
+ * Read the currently registered dynamic manager signature.
+ * Returns "" when nothing is registered (or when root is unavailable).
+ */
+fun dynamicManagerGet(): String {
+    val shell = getRootShell()
+    if (!shell.isRoot) return ""
+    return try {
+        runCmd(shell, "${getKsuDaemonPath()} kernel dynamic-manager get").trim()
+    } catch (e: Exception) {
+        Log.e(TAG, "dynamic-manager get failed", e)
+        ""
+    }
+}
+
+fun dynamicManagerSetApk(apkPath: String): Boolean {
+    val shell = getRootShell()
+    val result = ShellUtils.fastCmdResult(
+        shell, "${getKsuDaemonPath()} kernel dynamic-manager set-apk ${quoteShellArg(apkPath)}"
+    )
+    Log.i(TAG, "dynamic-manager set-apk result: $result")
+    return result
+}
+
+fun dynamicManagerSetApkFromUri(uri: Uri): Boolean {
+    return try {
+        val file = File(ksuApp.cacheDir, "dynamic-manager.apk")
+        ksuApp.contentResolver.openInputStream(uri)?.use { input ->
+            file.outputStream().use { output -> input.copyTo(output) }
+        } ?: return false
+        val result = dynamicManagerSetApk(file.absolutePath)
+        file.delete()
+        result
+    } catch (e: Exception) {
+        Log.e(TAG, "dynamic-manager set-apk from uri failed", e)
+        false
+    }
+}
+
+fun dynamicManagerSet(size: Int, hash: String): Boolean {
+    val shell = getRootShell()
+    val result = ShellUtils.fastCmdResult(
+        shell, "${getKsuDaemonPath()} kernel dynamic-manager set $size $hash"
+    )
+    Log.i(TAG, "dynamic-manager set result: $result")
+    return result
+}
+
+fun dynamicManagerClear(): Boolean {
+    val shell = getRootShell()
+    val result = ShellUtils.fastCmdResult(shell, "${getKsuDaemonPath()} kernel dynamic-manager clear")
+    Log.i(TAG, "dynamic-manager clear result: $result")
+    return result
+}
+
 fun addUmountPath(path: String, flags: Int): Boolean {
     val shell = getRootShell()
     val flagsArg = if (flags >= 0) "--flags $flags" else ""

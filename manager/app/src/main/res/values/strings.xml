@@ -424,6 +424,29 @@
     <string name="confirm_uninstall_content">The following KPM will be uninstalled: %s</string>
     <string name="snackbar_failed_to_check_module_file">Unable to check if module file exists</string>
     <string name="cancel">Cancel</string>
+    <!-- Dynamic manager -->
+    <string name="settings_dynamic_manager">Dynamic manager signature</string>
+    <string name="settings_dynamic_manager_summary">Register a custom APK signature at runtime</string>
+    <string name="dynamic_manager_title">Dynamic manager signature</string>
+    <string name="dynamic_manager_status_title">Current signature</string>
+    <string name="dynamic_manager_not_set">Not set</string>
+    <string name="dynamic_manager_loading">Loading…</string>
+    <string name="dynamic_manager_from_apk">Register from APK</string>
+    <string name="dynamic_manager_from_apk_summary">Pick an APK file and register its signing certificate</string>
+    <string name="dynamic_manager_manual">Set manually</string>
+    <string name="dynamic_manager_manual_summary">Enter certificate size and SHA-256 hash</string>
+    <string name="dynamic_manager_clear">Clear</string>
+    <string name="dynamic_manager_clear_summary">Remove the registered dynamic signature</string>
+    <string name="dynamic_manager_clear_confirm_title">Clear dynamic signature?</string>
+    <string name="dynamic_manager_clear_confirm_message">The currently registered dynamic signature will be removed.</string>
+    <string name="dynamic_manager_size_label">Certificate size (bytes)</string>
+    <string name="dynamic_manager_hash_label">SHA-256 hash (64 hex chars)</string>
+    <string name="dynamic_manager_apply">Apply</string>
+    <string name="dynamic_manager_success">Dynamic signature updated</string>
+    <string name="dynamic_manager_cleared">Dynamic signature cleared</string>
+    <string name="dynamic_manager_failed">Operation failed (root required?)</string>
+    <string name="dynamic_manager_invalid_input">Invalid size or hash format</string>
+    <string name="dynamic_manager_note">The registered signature is accepted in addition to the built-in one and survives reboots. Root is required to apply changes.</string>
     <!-- Tools -->
     <string name="settings_tools">Tools</string>
     <string name="settings_tools_summary">More advanced features.</string>

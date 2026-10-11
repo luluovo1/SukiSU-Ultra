@@ -75,6 +75,7 @@ import com.sukisu.ultra.ui.navigation3.rememberNavigator
 import com.sukisu.ultra.ui.screen.about.AboutScreen
 import com.sukisu.ultra.ui.screen.appprofile.AppProfileScreen
 import com.sukisu.ultra.ui.screen.colorpalette.ColorPaletteScreen
+import com.sukisu.ultra.ui.screen.dynamicmanager.DynamicManagerScreen
 import com.sukisu.ultra.ui.screen.executemoduleaction.ExecuteModuleActionScreen
 import com.sukisu.ultra.ui.screen.flash.FlashScreen
 import com.sukisu.ultra.ui.screen.home.HomePager
@@ -256,6 +257,7 @@ class MainActivity : ComponentActivity() {
                                     entry<Route.SuSFS>(swipeDismiss = swipeDismiss)  { SuSFSScreen() }
                                     entry<Route.Tool>(swipeDismiss = swipeDismiss)  { ToolsScreen() }
                                     entry<Route.UmountManager>(swipeDismiss = swipeDismiss)  { UmountManagerScreen() }
+                                    entry<Route.DynamicManager>(swipeDismiss = swipeDismiss)  { DynamicManagerScreen() }
                             }
                         }
 
