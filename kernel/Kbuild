@@ -101,7 +101,10 @@ obj-$(CONFIG_KSU) += kernelsu.o
 
 MDIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
-REPO_OWNER  := SukiSU-Ultra
+# Version counting must track THIS fork: the manager's versionCode comes from
+# `git rev-list --count` on this repository, so querying the upstream repo
+# here would make the kernel versionCode drift from the manager's.
+REPO_OWNER  := luluovo1
 REPO_NAME   := SukiSU-Ultra
 REPO_BRANCH := main
 
@@ -124,7 +127,13 @@ $(shell cd $(KSU_SRC) 2>/dev/null && [ -f ../.git/shallow ] && $(GIT_BIN) fetch 
 GITHUB_API_BASE  := https://api.github.com/repos/$(REPO_OWNER)/$(REPO_NAME)
 KSU_GITHUB_VER   := $(shell $(CURL_BIN) -s "$(GITHUB_API_BASE)/releases/latest" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"v?([^"]+)".*/\1/')
 GITHUB_COMMITS   := $(shell $(CURL_BIN) -sI "$(GITHUB_API_BASE)/commits?sha=$(REPO_BRANCH)&per_page=1" 2>/dev/null | grep -i "link:" | sed -n 's/.*page=\([0-9]*\)>; rel="last".*/\1/p')
-LOCAL_COUNT     := $(if $(GITHUB_COMMITS),$(GITHUB_COMMITS),$(git_commit_count))
+# Prefer the local git commit count: it is exact and immune to GitHub API
+# indexing lag (which used to make the kernel versionCode lag behind the
+# manager by one or more, triggering a bogus "LKM update available" hint).
+# A shallow clone yields a tiny count, so only accept values >= 1000 and
+# otherwise fall back to the GitHub API.
+GIT_COMMITS_LOCAL := $(shell c="$(git_commit_count)"; [ -n "$$c" ] && [ "$$c" -ge 1000 ] 2>/dev/null && echo "$$c")
+LOCAL_COUNT     := $(if $(GIT_COMMITS_LOCAL),$(GIT_COMMITS_LOCAL),$(if $(GITHUB_COMMITS),$(GITHUB_COMMITS),$(git_commit_count)))
 KSU_VERSION     := $(if $(LOCAL_COUNT),$(shell expr $(VERSION_BASE) + $(LOCAL_COUNT) - $(VERSION_OFFSET)),13000)
 VERSION_TAG     := $(or $(KSU_GITHUB_VER),$(git_latest_tag),4.2.0)
 KSU_VERSION_FULL := $(if $(call git_short_sha),v$(VERSION_TAG)-$(call git_short_sha)@$(call git_branch),v$(VERSION_TAG)-$(REPO_NAME)-unknown@unknown)

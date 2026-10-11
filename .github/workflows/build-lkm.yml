@@ -2,6 +2,16 @@ name: Build LKM for KernelSU
 on:
   workflow_call:
     inputs:
+      expected_size:
+        description: 'Production manager signature size (release builds)'
+        required: false
+        default: ''
+        type: string
+      expected_hash:
+        description: 'Production manager signature hash (release builds)'
+        required: false
+        default: ''
+        type: string
       expected_size2:
         description: 'Second expected signature size (for PR builds)'
         required: false
@@ -29,5 +39,7 @@ jobs:
     uses: ./.github/workflows/ddk-lkm.yml
     with:
       kmi: ${{ matrix.kmi }}
+      expected_size: ${{ inputs.expected_size || '' }}
+      expected_hash: ${{ inputs.expected_hash || '' }}
       expected_size2: ${{ inputs.expected_size2 || '' }}
       expected_hash2: ${{ inputs.expected_hash2 || '' }}
