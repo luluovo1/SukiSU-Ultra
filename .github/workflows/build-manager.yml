@@ -228,7 +228,7 @@ jobs:
 
           echo "Building spoofed Manager"
 
-          # Generate eleven random lowercase words.
+          # Generate twelve random lowercase words.
           word1=$(tr -dc 'a-z' </dev/urandom | head -c6)
           word2=$(tr -dc 'a-z' </dev/urandom | head -c6)
           word3=$(tr -dc 'a-z' </dev/urandom | head -c6)
@@ -240,10 +240,11 @@ jobs:
           word9=$(tr -dc 'a-z' </dev/urandom | head -c6)
           word10=$(tr -dc 'a-z' </dev/urandom | head -c6)
           word11=$(tr -dc 'a-z' </dev/urandom | head -c6)
+          word12=$(tr -dc 'a-z' </dev/urandom | head -c6)
 
           echo "Generated randomized package components."
 
-          export word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11
+          export word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12
 
           # Rename package directories.
           find . -depth -type d -name 'com' \
@@ -274,6 +275,12 @@ jobs:
           find . -depth -type f -name 'MainActivityViewModel.kt' \
             -execdir mv {} "${word11}ActivityViewModel.kt" \;
 
+          find . -depth -type f -name 'MagicaService.java' \
+            -execdir mv {} "${word12}Service.java" \;
+
+          find . -depth -type d -name 'magica' \
+            -execdir mv {} "${word12}" \;
+
           # Replace package references inside files.
           find . -type f -exec sed -i \
             -e "s/com\.sukisu\.ultra/$word1.$word2.$word3/g" \
@@ -296,6 +303,15 @@ jobs:
             -e "s/libksud\.so/lib${word7}.so/g" \
             -e "s/System\.loadLibrary(\"kernelsu\")/System.loadLibrary(\"${word8}\")/g" \
             -e "s/MainActivity/${word11}Activity/g" \
+            -e "s/\.magica\b/\.${word12}/g" \
+            -e "s/_magica_/_${word12}_/g" \
+            -e "s/:magica_boot/:${word12}_boot/g" \
+            -e "s/KernelSUMagica/${word12}/g" \
+            -e "s/MagicaService/${word12}Service/g" \
+            -e "s/Magica/${word12}/g" \
+            -e "s/magica bootstrap/${word12} bootstrap/g" \
+            -e "s/exec magica/exec ${word12}/g" \
+            -e "s/executing magica/executing ${word12}/g" \
             {} +
 
           # Rename the CMake native targets (libkernelsu.so / libadbroot.so).
