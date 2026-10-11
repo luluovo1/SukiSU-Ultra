@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.filled.VolunteerActivism
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -133,6 +134,29 @@ fun HomePagerMaterial(
                 state = state,
                 actions = actions,
             )
+            if (state.ksuVersion == null && state.kernelVersion.isGKI()) {
+                // Registering a dynamic manager signature is the escape hatch
+                // when the manager is not recognized yet: there is no bottom
+                // tab bar in this state, so the settings entry is unreachable.
+                SegmentedColumn(modifier = Modifier.padding(top = 12.dp)) {
+                    item {
+                        val dynamicManagerTitle = stringResource(R.string.dynamic_manager_title)
+                        SegmentedListItem(
+                            onClick = actions.onOpenDynamicManager,
+                            headlineContent = { Text(dynamicManagerTitle) },
+                            supportingContent = { Text(stringResource(R.string.settings_dynamic_manager_summary)) },
+                            leadingContent = {
+                                Icon(
+                                    Icons.Rounded.Security,
+                                    dynamicManagerTitle,
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            },
+                            trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) },
+                        )
+                    }
+                }
+            }
             InfoCard(systemInfo = state.systemInfo, showFullStatus = state.showFullStatus)
             SupportLinks(onOpenUrl = actions.onOpenUrl)
             Spacer(

@@ -69,4 +69,5 @@ data class HomeActions(
     val onInstallClick: () -> Unit,
     val onOpenUrl: (String) -> Unit,
     val onJailbreakClick: () -> Unit = {},
+    val onOpenDynamicManager: () -> Unit = {},
 )

@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.filled.VolunteerActivism
 import androidx.compose.material.icons.rounded.CheckCircleOutline
 import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.Security
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
@@ -403,6 +404,27 @@ private fun StatusCard(
                             }
                         )
                     }
+                }
+                // Registering a dynamic manager signature is the escape hatch
+                // when the manager is not recognized yet: there is no bottom
+                // tab bar in this state, so the settings entry is unreachable.
+                Card(
+                    modifier = Modifier.padding(top = 12.dp),
+                    onClick = { actions.onOpenDynamicManager() },
+                    pressFeedbackType = PressFeedbackType.Tilt
+                ) {
+                    BasicComponent(
+                        title = stringResource(R.string.dynamic_manager_title),
+                        summary = stringResource(R.string.settings_dynamic_manager_summary),
+                        startAction = {
+                            Icon(
+                                Icons.Rounded.Security,
+                                stringResource(R.string.dynamic_manager_title),
+                                modifier = Modifier.padding(end = 6.dp),
+                                tint = colorScheme.onBackground,
+                            )
+                        },
+                    )
                 }
             }
 
