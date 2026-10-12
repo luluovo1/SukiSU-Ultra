@@ -1173,8 +1173,16 @@ where
 pub fn is_zygisk_daemon_running(module_id: &str) -> bool {
     let id_lower = module_id.to_ascii_lowercase();
     let result = match id_lower.as_str() {
+        // ReZygisk's daemons are named after their binaries: the monitor runs
+        // as "zygisk-ptrace64"/"zygisk-ptrace32" (comm, 15 chars) and the
+        // companion daemon as "zygiskd64"/"zygiskd32". Relying only on the
+        // "rezygisk" prefix never matched them, so the manager indicator kept
+        // showing "reboot required" while the daemon was actually running.
         "rezygisk" => is_process_running_matching(|name| {
-            name.starts_with("rezygisk") || name.contains("rezygisk")
+            name.starts_with("rezygisk")
+                || name.contains("rezygisk")
+                || name.starts_with("zygisk-ptrace")
+                || name.starts_with("zygiskd")
         }),
         "zygisksu" => is_process_running_matching(|name| {
             name.starts_with("zygiskd")
