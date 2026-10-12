@@ -135,6 +135,12 @@ class MainActivity : ComponentActivity() {
         val splashScreen = installSplashScreen()
         splashStartedAt = SystemClock.uptimeMillis()
         super.onCreate(savedInstanceState)
+        // Never let the system store a snapshot of the manager UI in the
+        // snapshot cache (/data/system_ce/<user>/snapshots), which backs
+        // both the recents screen and the snapshot starting window.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            setRecentsScreenshotEnabled(false)
+        }
         splashScreen.setKeepOnScreenCondition {
             !contentReady || SystemClock.uptimeMillis() - splashStartedAt < splashAnimationDurationMs
         }

@@ -228,7 +228,7 @@ jobs:
 
           echo "Building spoofed Manager"
 
-          # Generate twelve random lowercase words.
+          # Generate fifteen random lowercase words.
           word1=$(tr -dc 'a-z' </dev/urandom | head -c6)
           word2=$(tr -dc 'a-z' </dev/urandom | head -c6)
           word3=$(tr -dc 'a-z' </dev/urandom | head -c6)
@@ -241,10 +241,13 @@ jobs:
           word10=$(tr -dc 'a-z' </dev/urandom | head -c6)
           word11=$(tr -dc 'a-z' </dev/urandom | head -c6)
           word12=$(tr -dc 'a-z' </dev/urandom | head -c6)
+          word13=$(tr -dc 'a-z' </dev/urandom | head -c6)
+          word14=$(tr -dc 'a-z' </dev/urandom | head -c6)
+          word15=$(tr -dc 'a-z' </dev/urandom | head -c6)
 
           echo "Generated randomized package components."
 
-          export word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12
+          export word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12 word13 word14 word15
 
           # Rename package directories.
           find . -depth -type d -name 'com' \
@@ -281,6 +284,12 @@ jobs:
           find . -depth -type d -name 'magica' \
             -execdir mv {} "${word12}" \;
 
+          find . -depth -type f -name 'WebUIActivity.kt' \
+            -execdir mv {} "${word13}Activity.kt" \;
+
+          find . -depth -type f -name 'DownloadService.kt' \
+            -execdir mv {} "${word14}Service.kt" \;
+
           # Replace package references inside files.
           find . -type f -exec sed -i \
             -e "s/com\.sukisu\.ultra/$word1.$word2.$word3/g" \
@@ -315,6 +324,8 @@ jobs:
             -e "s/exec magica/exec ${word12}/g" \
             -e "s/executing magica/executing ${word12}/g" \
             -e "s/forkDontCareAndExecKsud/forkDontCareAndExec${word8}/g" \
+            -e "s/WebUIActivity/${word13}Activity/g" \
+            -e "s/DownloadService/${word14}Service/g" \
             {} +
 
           # Rename the CMake native targets (libkernelsu.so / libadbroot.so).
@@ -335,6 +346,21 @@ jobs:
           sed -i \
             -e "s/return getGitDescribe()/return \"4.2.0\"/" \
             build.gradle.kts
+
+          # Neutralize detection-grade manifest surfaces: zip/apk and
+          # ksu:// intent-filters (resolvable by any app via
+          # queryIntentActivities), the app-zygote attributes and the
+          # "webui" taskAffinity. In-app flows use explicit intents and are
+          # unaffected; only external "open zip with manager" and external
+          # ksu:// deep links stop working in spoofed builds.
+          python3 ../scripts/spoof_manifest.py \
+            app/src/main/AndroidManifest.xml "$word15"
+
+          # Perturb launcher icons (webp pixels + adaptive-vector alpha +
+          # background color) so every build ships different icon hashes
+          # while looking identical; defeats icon-hash matching.
+          python3 -c "import PIL" 2>/dev/null || python3 -m pip install --quiet Pillow
+          python3 ../scripts/spoof_icons.py app/src/main/res
 
           # Export the randomized ksud library name for the jniLibs copy step.
           echo "KSUD_LIB_NAME=lib${word7}.so" >> "$GITHUB_ENV"

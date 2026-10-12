@@ -30,7 +30,7 @@ val managerName = project.findProperty("KSU_NAME")?.toString() ?: defaultManager
 
 // Commit that last touched the kernel sources; embedded so the manager can
 // tell whether the running kernel really predates the bundled LKM.
-fun getKernelCommit(): String {
+fun readKernelCommit(): String {
     return try {
         val process = Runtime.getRuntime().exec(
             arrayOf("git", "log", "-1", "--format=%h", "--abbrev=8", "--", "../kernel")
@@ -40,7 +40,7 @@ fun getKernelCommit(): String {
         ""
     }
 }
-val kernelCommit = getKernelCommit()
+val kernelCommit = readKernelCommit()
 
 apksign {
     storeFileProperty = "KEYSTORE_FILE"

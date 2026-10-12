@@ -2,6 +2,7 @@ package com.sukisu.ultra.ui.webui
 
 import android.annotation.SuppressLint
 import android.content.SharedPreferences
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import android.widget.Toast
@@ -41,6 +42,13 @@ class WebUIActivity : ComponentActivity() {
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
 
         super.onCreate(savedInstanceState)
+
+        // Never let the system store a snapshot of the WebUI in the
+        // snapshot cache (/data/system_ce/<user>/snapshots), which backs
+        // both the recents screen and the snapshot starting window.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            setRecentsScreenshotEnabled(false)
+        }
 
         setContent {
             val context = LocalContext.current
