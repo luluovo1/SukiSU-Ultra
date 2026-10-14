@@ -198,6 +198,24 @@ fun SettingPagerMaterial(
                         )
                     }
                 )
+                val dynamicManagerTitle = stringResource(id = R.string.settings_dynamic_manager)
+                SegmentedColumn(
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                    content = listOf {
+                        SegmentedListItem(
+                            onClick = actions.onOpenDynamicManager,
+                            headlineContent = { Text(dynamicManagerTitle) },
+                            supportingContent = { Text(stringResource(id = R.string.settings_dynamic_manager_summary)) },
+                            leadingContent = { Icon(Icons.Filled.Security, dynamicManagerTitle) },
+                            trailingContent = {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                    null
+                                )
+                            }
+                        )
+                    }
+                )
                 val toolsTitle = stringResource(id = R.string.settings_tools)
                 SegmentedColumn(
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
@@ -217,25 +235,6 @@ fun SettingPagerMaterial(
                     }
                 )
             }
-
-            val dynamicManagerTitle = stringResource(id = R.string.settings_dynamic_manager)
-            SegmentedColumn(
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
-                content = listOf {
-                    SegmentedListItem(
-                        onClick = actions.onOpenDynamicManager,
-                        headlineContent = { Text(dynamicManagerTitle) },
-                        supportingContent = { Text(stringResource(id = R.string.settings_dynamic_manager_summary)) },
-                        leadingContent = { Icon(Icons.Filled.Security, dynamicManagerTitle) },
-                        trailingContent = {
-                            Icon(
-                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                null
-                            )
-                        }
-                    )
-                }
-            )
 
             val kpmTitle = stringResource(id = R.string.kpm_title)
             if (isKpmAvailable) {
