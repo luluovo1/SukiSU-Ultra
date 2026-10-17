@@ -66,8 +66,6 @@ mod android {
     pub const DEFAULT_PACKAGE_NAME: &str = env!("KSU_PACKAGE_NAME");
 
     pub const UMOUNT_CONFIG_PATH: &str = concatcp!(WORKING_DIR, ".umount");
-
-    pub const DYNAMIC_MANAGER: &str = concatcp!(WORKING_DIR, ".dynamic_manager");
 }
 
 #[allow(unused)]
