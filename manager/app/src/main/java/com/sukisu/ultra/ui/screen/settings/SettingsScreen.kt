@@ -62,6 +62,7 @@ fun SettingPager(
         onSetSelinuxHideEnabled = viewModel::setSelinuxHideEnabled,
         onSetSulogEnabled = viewModel::setSulogEnabled,
         onSetAdbRootEnabled = viewModel::setAdbRootEnabled,
+        onSetShellSuAdbOnlyEnabled = viewModel::setShellSuAdbOnlyEnabled,
         onSetDefaultUmountModules = viewModel::setDefaultUmountModules,
         onSetEnableWebDebugging = viewModel::setEnableWebDebugging,
         onSetAutoJailbreak = viewModel::setAutoJailbreak,
@@ -71,7 +72,7 @@ fun SettingPager(
         onOpenTools = { navigator.push(Route.Tool) },
         onOpenKpm = { navigator.push(Route.Kpm) },
         onOpenSusfsConfig = { navigator.push(Route.SuSFS) },
-        onOpenDynamicManager = { navigator.push(Route.DynamicManager) },
+        onOpenDynamicManagers = { navigator.push(Route.DynamicManagers) },
     )
 
     when (LocalUiMode.current) {

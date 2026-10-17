@@ -3,7 +3,7 @@ use crate::kpm;
 use crate::module::{ScriptWait, handle_updated_modules, prune_modules};
 use crate::utils::is_safe_mode;
 use crate::{
-    assets, defs, dynamic_manager, ksucalls, metamodule, restorecon,
+    assets, defs, ksucalls, metamodule, restorecon,
     utils::{self},
 };
 use anyhow::{Context, Result};
@@ -45,16 +45,13 @@ pub fn on_post_fs_data() -> Result<()> {
         if let Err(e) = crate::module::exec_common_scripts("post-fs-data.d", wait) {
             warn!("exec common post-fs-data scripts failed: {e}");
         }
-        // Replay the persisted dynamic manager signature before pkg_observer
-        // rescans packages.list, so a non-statically-signed manager is crowned.
-        if let Err(e) = dynamic_manager::booted_load() {
-            warn!("set dynamic manager failed: {e}");
-        }
     }
 
     let module_dir = defs::MODULE_DIR;
 
     assets::ensure_binaries(true).with_context(|| "Failed to extract bin assets")?;
+
+    crate::hot_install::clean_trash();
 
     // if we are in safe mode, we should disable all modules
     if safe_mode {
@@ -92,6 +89,8 @@ pub fn on_post_fs_data() -> Result<()> {
     if let Err(e) = crate::profile::apply_sepolies() {
         warn!("apply root profile sepolicy failed: {e}");
     }
+
+    crate::feature::init_forced_features();
 
     // load feature config
     if is_safe_mode() {

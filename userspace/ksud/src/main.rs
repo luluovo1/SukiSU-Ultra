@@ -26,6 +26,9 @@ mod defs;
 mod dynamic_manager;
 #[cfg(target_os = "android")]
 mod feature;
+mod feature_id;
+#[cfg(target_os = "android")]
+mod hot_install;
 #[cfg(target_os = "android")]
 mod init_event;
 #[cfg(target_arch = "aarch64")]

@@ -4,7 +4,7 @@ use std::fmt::Write as FmtWrite;
 use std::{process::Command, time::Instant};
 
 use crate::module::{ScriptWait, handle_updated_modules, prune_modules};
-use crate::{assets, defs, dynamic_manager, init_event, metamodule, restorecon, utils};
+use crate::{assets, defs, init_event, metamodule, restorecon, utils};
 
 fn dump_process_info(label: &str) {
     use rustix::process::{getgid, getgroups, getpid, getuid};
@@ -72,10 +72,14 @@ pub fn run(
         };
 
         if let Some(r) = spoof_release {
-            let _ = write!(params, "spoof_release=\"{r}\" ");
+            // Match the escaping used by boot_patch when writing ksu_config so
+            // values containing '"' or '\' survive kernel param parsing.
+            let escaped = r.replace('\\', "\\\\").replace('"', "\\\"");
+            let _ = write!(params, "spoof_release=\"{escaped}\" ");
         }
         if let Some(v) = spoof_version {
-            let _ = write!(params, "spoof_version=\"{v}\" ");
+            let escaped = v.replace('\\', "\\\\").replace('"', "\\\"");
+            let _ = write!(params, "spoof_version=\"{escaped}\" ");
         }
 
         let params_cstr = std::ffi::CString::new(params.trim())?;
@@ -108,6 +112,8 @@ pub fn run(
 
     utils::install(None, None).context("Failed to install ksud")?;
 
+    crate::hot_install::clean_trash();
+
     // 5. Handle module updates
     if let Err(e) = handle_updated_modules() {
         warn!("handle updated modules failed: {e}");
@@ -131,13 +137,9 @@ pub fn run(
     }
 
     // 7. Initialize features
+    crate::feature::init_forced_features();
     if let Err(e) = crate::feature::init_features() {
         warn!("init features failed: {e}");
-    }
-
-    // Replay the persisted dynamic manager signature (fresh kernel state)
-    if let Err(e) = dynamic_manager::booted_load() {
-        warn!("set dynamic manager failed: {e}");
     }
 
     // 8. Execute late-load stage scripts with a shared boot deadline

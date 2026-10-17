@@ -28,13 +28,18 @@ import com.sukisu.ultra.core.tasks.BootKernelVersion
 import com.sukisu.ultra.core.tasks.ExtractImage
 import com.sukisu.ultra.core.tasks.ProbeResult
 import com.sukisu.ultra.core.utils.DataSourceChannel
+import com.sukisu.ultra.data.registry.DownloadVerificationException
+import com.sukisu.ultra.data.registry.RegistryDownloadStore
+import com.sukisu.ultra.data.registry.copyForInstall
 import com.sukisu.ultra.ksuApp
 import okhttp3.OkHttpClient
 import org.json.JSONArray
 import java.io.File
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
+import java.util.zip.ZipFile
 
 /**
  * @author weishu
@@ -122,10 +127,15 @@ suspend fun getFeatureStatus(feature: String): String = withContext(Dispatchers.
     out.firstOrNull()?.trim().orEmpty()
 }
 
-suspend fun getFeaturePersistValue(feature: String): Long? = withContext(Dispatchers.IO) {
+suspend fun getFeaturePersistValue(feature: String): Long? = readFeatureValue("--config $feature")
+
+// Current value in kernel
+suspend fun getFeatureValue(feature: String): Long? = readFeatureValue(feature)
+
+private suspend fun readFeatureValue(args: String): Long? = withContext(Dispatchers.IO) {
     val shell = getRootShell()
     val out = shell.newJob()
-        .add("${getKsuDaemonPath()} feature get --config $feature").to(ArrayList<String>(), null).exec().out
+        .add("${getKsuDaemonPath()} feature get $args").to(ArrayList<String>(), null).exec().out
     val valueLine = out.firstOrNull { it.trim().startsWith("Value:") } ?: return@withContext null
     valueLine.substringAfter("Value:").trim().toLongOrNull()
 }
@@ -210,20 +220,54 @@ fun flashModule(
     onStdout: (String) -> Unit,
     onStderr: (String) -> Unit
 ): FlashResult {
-    val resolver = ksuApp.contentResolver
-    with(resolver.openInputStream(uri)) {
-        val file = File(ksuApp.cacheDir, "module.zip")
-        file.outputStream().use { output ->
-            this?.copyTo(output)
+    // Registry downloads live in app-private storage and carry their expected size + SHA-256;
+    // the exact copy handed to ksud is re-hashed right before installing.
+    val storeRoot = File(ksuApp.filesDir, RegistryDownloadStore.DIR_NAME)
+    val expected = if (uri.scheme == ContentResolver.SCHEME_FILE) {
+        uri.path?.let { RegistryDownloadStore.expectedFor(storeRoot, File(it)) }
+    } else {
+        null
+    }
+    val file = File.createTempFile("module-", ".zip", ksuApp.cacheDir)
+    try {
+        try {
+            val input = ksuApp.contentResolver.openInputStream(uri) ?: throw IOException("Cannot open $uri")
+            input.use { copyForInstall(it, file, expected) }
+        } catch (e: IOException) {
+            Log.w("KernelSU", "module $uri not installed: ${e.message}")
+            if (e is DownloadVerificationException) {
+                // Corrupted or tampered after download: never keep it around for a retry.
+                uri.path?.let { RegistryDownloadStore.delete(storeRoot, File(it)) }
+            }
+            val message = "! ${e.message ?: "Failed to read module"}"
+            onStderr(message)
+            return FlashResult(1, message, false)
         }
         val cmd = "module install ${file.absolutePath}"
         val result = flashWithIO("${getKsuDaemonPath()} $cmd", onStdout, onStderr)
         Log.i("KernelSU", "install module $uri result: $result")
-
+        return FlashResult(result, result.isSuccess && moduleNeedsReboot(file))
+    } finally {
         file.delete()
-
-        return FlashResult(result)
     }
+}
+
+private val MODULE_ID_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9._-]+$")
+
+// A hot installed module goes live without leaving the "update" flag behind
+private fun moduleNeedsReboot(zip: File): Boolean {
+    val id = runCatching {
+        ZipFile(zip).use { archive ->
+            val entry = archive.getEntry("module.prop") ?: return@use null
+            archive.getInputStream(entry).bufferedReader().useLines { lines ->
+                lines.map { it.trim() }.firstOrNull { it.startsWith("id=") }?.substringAfter('=')?.trim()
+            }
+        }
+    }.getOrNull()
+    if (id == null || !MODULE_ID_REGEX.matches(id)) return true
+    val dir = "/data/adb/modules/$id"
+    // Any failure to check counts as needing a reboot
+    return !ShellUtils.fastCmdResult(getRootShell(), "[ -d $dir ] && [ ! -e $dir/update ]")
 }
 
 fun runModuleAction(
@@ -249,6 +293,38 @@ fun runModuleAction(
     Log.i("KernelSU", "Module runAction result: $result")
 
     return result.isSuccess
+}
+
+/**
+ * Runs a prepared one-shot script command (see ScriptCommand) in a new root shell in the
+ * global mount namespace, like a module action. Returns the exit code.
+ */
+fun runOneshotScript(
+    command: String, onStdout: (String) -> Unit, onStderr: (String) -> Unit
+): Int {
+    val stdoutCallback: CallbackList<String?> = object : CallbackList<String?>() {
+        override fun onAddElement(s: String?) {
+            onStdout(s ?: "")
+        }
+    }
+
+    val stderrCallback: CallbackList<String?> = object : CallbackList<String?>() {
+        override fun onAddElement(s: String?) {
+            onStderr(s ?: "")
+        }
+    }
+
+    val result = withNewRootShell(true) {
+        newJob().add(command).to(stdoutCallback, stderrCallback).exec()
+    }
+    Log.i(TAG, "one-shot script exit code: ${result.code}")
+    return result.code
+}
+
+/** Removes a script's extraction directory, including files the script created as root. */
+fun removeAsRoot(path: String): Boolean {
+    val escaped = "'" + path.replace("'", "'\\''") + "'"
+    return ShellUtils.fastCmdResult(getRootShell(), "rm -rf $escaped")
 }
 
 fun restoreBoot(
@@ -286,14 +362,42 @@ private fun writeLkmFile(lkm: LkmSelection): File? {
     return file
 }
 
+// A single module name as accepted by ksud's --block-module parser.
+private fun isValidBlockModuleName(name: String): Boolean =
+    name.isNotEmpty() && name.length <= 64 &&
+        name.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '_' }
+
+/** Parse the comma-separated block-modules field into the non-empty names. */
+fun parseBlockModules(input: String): List<String> =
+    input.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+
+// The kernel copies the block_modules= value into a 256-byte buffer, leaving
+// 255 bytes; a longer list would be silently truncated, leaving some modules
+// unblocked. Reject it here too.
+private const val MAX_BLOCK_MODULES_LEN = 255
+
+/** Whether every name in the block-modules field is valid (empty is valid). */
+fun isBlockModulesValid(input: String): Boolean {
+    val names = parseBlockModules(input)
+    return names.all(::isValidBlockModuleName) &&
+        names.joinToString(",").length <= MAX_BLOCK_MODULES_LEN
+}
+
 private fun bootPatchFlags(
     allowShell: Boolean,
     enableAdb: Boolean,
     forceBackup: Boolean,
+    blockModules: String,
 ): String = buildString {
     if (allowShell) append(" --allow-shell")
     if (enableAdb) append(" --enable-adbd")
     if (forceBackup) append(" --backup")
+    // Names are validated in the UI before install; pass them through without
+    // mutating. Drop the flag entirely (never inject) if anything slips through.
+    val names = parseBlockModules(blockModules)
+    if (names.isNotEmpty() && names.all(::isValidBlockModuleName)) {
+        append(" --block-module ${names.joinToString(",")}")
+    }
 }
 
 fun installBoot(
@@ -304,6 +408,7 @@ fun installBoot(
     allowShell: Boolean,
     enableAdb: Boolean,
     forceBackup: Boolean,
+    blockModules: String,
     spoofRelease: String,
     spoofVersion: String,
     onStdout: (String) -> Unit,
@@ -330,15 +435,10 @@ fun installBoot(
     } else {
         " -b ${bootFile.absolutePath}"
     }
-    cmd += bootPatchFlags(allowShell, enableAdb, forceBackup)
+    cmd += bootPatchFlags(allowShell, enableAdb, forceBackup, blockModules)
 
-    if (spoofRelease.isNotBlank()) {
-        cmd += " --spoof-release ${spoofRelease.shellArg()}"
-    }
-
-    if (spoofVersion.isNotBlank()) {
-        cmd += " --spoof-version ${spoofVersion.shellArg()}"
-    }
+    cmd += " --spoof-release ${spoofRelease.trim().shellArg()}"
+    cmd += " --spoof-version ${spoofVersion.trim().shellArg()}"
 
     if (ota) {
         cmd += " -u"
@@ -382,6 +482,7 @@ fun downloadBoot(
     allowShell: Boolean,
     enableAdb: Boolean,
     forceBackup: Boolean,
+    blockModules: String,
     spoofRelease: String,
     spoofVersion: String,
     onStdout: (String) -> Unit,
@@ -440,15 +541,10 @@ fun downloadBoot(
     }
 
     var cmd = "${getKsuDaemonPath()} boot-patch -b ${bootFile.absolutePath}"
-    cmd += bootPatchFlags(allowShell, enableAdb, forceBackup)
+    cmd += bootPatchFlags(allowShell, enableAdb, forceBackup, blockModules)
 
-    if (spoofRelease.isNotBlank()) {
-        cmd += " --spoof-release ${spoofRelease.shellArg()}"
-    }
-
-    if (spoofVersion.isNotBlank()) {
-        cmd += " --spoof-version ${spoofVersion.shellArg()}"
-    }
+    cmd += " --spoof-release ${spoofRelease.trim().shellArg()}"
+    cmd += " --spoof-version ${spoofVersion.trim().shellArg()}"
 
     val lkmFile = writeLkmFile(lkm)
     if (lkmFile != null) {
@@ -576,6 +672,26 @@ suspend fun getAvailablePartitions(): List<String> = withContext(Dispatchers.IO)
     val cmd = "boot-info available-partitions"
     val out = shell.newJob().add("${getKsuDaemonPath()} $cmd").to(ArrayList(), null).exec().out
     out.filter { it.isNotBlank() }.map { it.trim() }
+}
+
+// Known vendor anti-root kernel modules that `--block-module` is meant for.
+private val KNOWN_BLOCKABLE_MODULES = listOf(
+    "vr", "vklp", "oplus_secure_guard", "oplus_secure_guard_new", "mkp"
+)
+
+// Return the known anti-root modules currently loaded on this device (per
+// /proc/modules), so the install screen can pre-fill only the relevant ones.
+// Modules other modules use are left out: blocking one keeps its users from
+// loading as well, so ksuinit refuses to block it in first stage anyway.
+suspend fun getLoadedBlockableModules(): List<String> = withContext(Dispatchers.IO) {
+    val shell = getRootShell()
+    val out = shell.newJob().add("cat /proc/modules").to(ArrayList(), null).exec().out
+    // <name> <size> <refcount> <used by, or "-"> <state> <address>
+    val unused = out.mapNotNull { line ->
+        val fields = line.trim().split(Regex("\\s+"))
+        fields.getOrNull(0)?.takeIf { fields.getOrNull(3) == "-" }
+    }.toHashSet()
+    KNOWN_BLOCKABLE_MODULES.filter { it in unused }
 }
 
 fun hasMagisk(): Boolean {
@@ -794,65 +910,6 @@ fun spoofCpu(
     return result
 }
 
-// === Dynamic manager signature (runtime-registered manager APK signature) ===
-
-private fun quoteShellArg(value: String): String = "'${value.replace("'", "'\\''")}'"
-
-/**
- * Read the currently registered dynamic manager signature.
- * Returns "" when nothing is registered (or when root is unavailable).
- */
-fun dynamicManagerGet(): String {
-    val shell = getRootShell()
-    if (!shell.isRoot) return ""
-    return try {
-        runCmd(shell, "${getKsuDaemonPath()} kernel dynamic-manager get").trim()
-    } catch (e: Exception) {
-        Log.e(TAG, "dynamic-manager get failed", e)
-        ""
-    }
-}
-
-fun dynamicManagerSetApk(apkPath: String): Boolean {
-    val shell = getRootShell()
-    val result = ShellUtils.fastCmdResult(
-        shell, "${getKsuDaemonPath()} kernel dynamic-manager set-apk ${quoteShellArg(apkPath)}"
-    )
-    Log.i(TAG, "dynamic-manager set-apk result: $result")
-    return result
-}
-
-fun dynamicManagerSetApkFromUri(uri: Uri): Boolean {
-    return try {
-        val file = File(ksuApp.cacheDir, "dynamic-manager.apk")
-        ksuApp.contentResolver.openInputStream(uri)?.use { input ->
-            file.outputStream().use { output -> input.copyTo(output) }
-        } ?: return false
-        val result = dynamicManagerSetApk(file.absolutePath)
-        file.delete()
-        result
-    } catch (e: Exception) {
-        Log.e(TAG, "dynamic-manager set-apk from uri failed", e)
-        false
-    }
-}
-
-fun dynamicManagerSet(size: Int, hash: String): Boolean {
-    val shell = getRootShell()
-    val result = ShellUtils.fastCmdResult(
-        shell, "${getKsuDaemonPath()} kernel dynamic-manager set $size $hash"
-    )
-    Log.i(TAG, "dynamic-manager set result: $result")
-    return result
-}
-
-fun dynamicManagerClear(): Boolean {
-    val shell = getRootShell()
-    val result = ShellUtils.fastCmdResult(shell, "${getKsuDaemonPath()} kernel dynamic-manager clear")
-    Log.i(TAG, "dynamic-manager clear result: $result")
-    return result
-}
-
 fun addUmountPath(path: String, flags: Int): Boolean {
     val shell = getRootShell()
     val flagsArg = if (flags >= 0) "--flags $flags" else ""
@@ -952,11 +1009,80 @@ suspend fun getBootConfig(): BootConfig = withContext(Dispatchers.IO) {
 
 private fun parseQuotedValue(value: String): String {
     val trimmed = value.trim()
-    return if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
-        trimmed.substring(1, trimmed.length - 1)
-    } else if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
-        trimmed.substring(1, trimmed.length - 1)
-    } else {
-        trimmed
+    val inner = when {
+        trimmed.length >= 2 && trimmed.startsWith("\"") && trimmed.endsWith("\"") ->
+            trimmed.substring(1, trimmed.length - 1)
+        trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'") ->
+            trimmed.substring(1, trimmed.length - 1)
+        else -> trimmed
     }
+    // ksud boot-patch escapes '"' and '\' inside quoted values; undo it here
+    if ('\\' !in inner) return inner
+    val sb = StringBuilder(inner.length)
+    var i = 0
+    while (i < inner.length) {
+        val c = inner[i]
+        if (c == '\\' && i + 1 < inner.length && (inner[i + 1] == '"' || inner[i + 1] == '\\')) {
+            sb.append(inner[i + 1])
+            i += 2
+        } else {
+            sb.append(c)
+            i += 1
+        }
+    }
+    return sb.toString()
+}
+
+data class DynamicManagerEntry(val packageName: String, val certSize: Int, val hash: String, val uid: Int)
+data class DynamicManagerState(val enabled: Boolean, val entries: List<DynamicManagerEntry>)
+data class DynamicManagerSignature(val certSize: Int, val hash: String)
+
+private suspend fun runDynamicManagerCommand(vararg args: String): String = withContext(Dispatchers.IO) {
+    val command = "${getKsuDaemonPath()} " + args.joinToString(" ") { it.ksudShellArg() }
+    val output = runCmd(getRootShell(), "$command; printf '\\n__KSUD_EXIT_CODE__:%s' $? ")
+    val marker = Regex("\\n__KSUD_EXIT_CODE__:(\\d+)$").find(output)
+        ?: error("ksud command did not return an exit status")
+    check(marker.groupValues[1] == "0") { output.substringBefore(marker.value).ifBlank { "ksud command failed" } }
+    output.substringBefore(marker.value)
+}
+
+private fun String.ksudShellArg(): String = "'${replace("'", "'\\''")}'"
+
+suspend fun getDynamicManagers(): DynamicManagerState {
+    val lines = runDynamicManagerCommand("manager", "list").lines()
+    val enabled = lines.firstOrNull { it.startsWith("enabled:") }
+        ?.substringAfter(':')?.trim()?.toBooleanStrictOrNull() ?: false
+    val entries = lines.drop(1).filter { it.isNotBlank() }.mapNotNull { line ->
+        val fields = line.split('\t')
+        if (fields.size < 4) return@mapNotNull null
+        DynamicManagerEntry(
+            packageName = fields[0],
+            certSize = fields[1].toIntOrNull() ?: return@mapNotNull null,
+            hash = fields[2],
+            uid = fields[3].toIntOrNull() ?: return@mapNotNull null,
+        )
+    }
+    return DynamicManagerState(enabled, entries)
+}
+
+suspend fun setDynamicManagersEnabled(enabled: Boolean) {
+    runDynamicManagerCommand("manager", "set-enabled", enabled.toString())
+}
+
+suspend fun removeDynamicManager(packageName: String) {
+    runDynamicManagerCommand("manager", "remove", packageName)
+}
+
+suspend fun getDynamicManagerSignature(apkPath: String): DynamicManagerSignature {
+    val output = runDynamicManagerCommand("debug", "get-sign", apkPath)
+    val size = Regex("size:\\s*(0x[0-9a-fA-F]+|[0-9]+)").find(output)?.groupValues?.get(1)
+        ?: error("Could not parse signature size")
+    val certSize = if (size.startsWith("0x")) size.substring(2).toLong(16).toInt() else size.toInt()
+    val hash = Regex("hash:\\s*([0-9a-fA-F]{64})").find(output)?.groupValues?.get(1)
+        ?: error("Could not parse signature hash")
+    return DynamicManagerSignature(certSize, hash)
+}
+
+suspend fun addDynamicManager(packageName: String, signature: DynamicManagerSignature) {
+    runDynamicManagerCommand("manager", "add", packageName, signature.certSize.toString(), signature.hash)
 }

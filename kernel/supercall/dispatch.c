@@ -15,6 +15,7 @@
 #include "runtime/ksud_boot.h"
 #include "feature/kernel_umount.h"
 #include "manager/manager_identity.h"
+#include "manager/dynamic_manager.h"
 #include "selinux/selinux.h"
 #include "infra/file_wrapper.h"
 #include "hook/tp_marker.h"
@@ -24,7 +25,6 @@
 #include "supercall/supercall.h"
 #include "feature/uts_spoof.h"
 #include "feature/cpu_spoof.h"
-#include "feature/dynamic_manager.h"
 
 #ifdef CONFIG_KPM
 #include "kpm/kpm.h"
@@ -62,7 +62,7 @@ static int do_get_info(void __user *arg)
     if (ksu_late_loaded) {
         cmd.flags |= KSU_GET_INFO_FLAG_LATE_LOAD;
     }
-#ifdef EXPECTED_SIZE2
+#if KSU_IS_PR_BUILD
     cmd.flags |= KSU_GET_INFO_FLAG_PR_BUILD;
 #endif
     cmd.features = KSU_FEATURE_MAX;
@@ -93,7 +93,7 @@ static int do_get_info_legacy(void __user *arg)
     if (ksu_late_loaded) {
         cmd.flags |= KSU_GET_INFO_FLAG_LATE_LOAD;
     }
-#ifdef EXPECTED_SIZE2
+#if KSU_IS_PR_BUILD
     cmd.flags |= KSU_GET_INFO_FLAG_PR_BUILD;
 #endif
     cmd.features = KSU_FEATURE_MAX;
@@ -305,7 +305,7 @@ static int do_uid_granted_root(void __user *arg)
         return -EFAULT;
     }
 
-    cmd.granted = ksu_is_allow_uid_for_current(cmd.uid);
+    cmd.granted = ksu_is_uid_granted_root(cmd.uid);
 
     if (copy_to_user(arg, &cmd, sizeof(cmd))) {
         pr_err("uid_granted_root: copy_to_user failed\n");
@@ -403,7 +403,7 @@ static int do_set_app_profile(void __user *arg)
 static int do_get_feature(void __user *arg)
 {
     struct ksu_get_feature_cmd cmd;
-    bool supported;
+    bool supported = false;
     int ret;
 
     if (copy_from_user(&cmd, arg, sizeof(cmd))) {
@@ -412,7 +412,13 @@ static int do_get_feature(void __user *arg)
     }
 
     ret = ksu_get_feature(cmd.feature_id, &cmd.value, &supported);
-    cmd.supported = supported ? 1 : 0;
+    cmd.supported = 0;
+    if (supported) {
+        cmd.supported |= KSU_FEATURE_FLAG_SUPPORTED;
+        if (ksu_feature_is_forced(cmd.feature_id)) {
+            cmd.supported |= KSU_FEATURE_FLAG_FORCED;
+        }
+    }
 
     if (ret && supported) {
         pr_err("get_feature: failed for feature %u: %d\n", cmd.feature_id, ret);
@@ -885,31 +891,30 @@ static int do_enable_kpm(void __user *arg)
     return 0;
 }
 
-// 106. DYNAMIC_MANAGER - runtime manager signature (set/get/wipe)
-static int do_dynamic_manager(void __user *arg)
+static int do_manager(void __user *arg)
 {
-#ifdef CONFIG_KSU_DISABLE_MANAGER
-    return -EOPNOTSUPP;
-#else
-    struct ksu_dynamic_manager_cmd cmd;
+    struct ksu_manager_cmd *cmd;
+    int ret;
 
-    if (copy_from_user(&cmd, arg, sizeof(cmd))) {
-        pr_err("dynamic_manager: copy_from_user failed\n");
-        return -EFAULT;
+    cmd = kzalloc(sizeof(*cmd), GFP_KERNEL);
+    if (!cmd)
+        return -ENOMEM;
+
+    if (copy_from_user(cmd, arg, sizeof(*cmd))) {
+        ret = -EFAULT;
+        goto out;
     }
-
-    int ret = ksu_handle_dynamic_manager(&cmd);
-    if (ret) {
-        return ret;
+    if (cmd->operation == KSU_MANAGER_GET) {
+        ret = ksu_dynamic_manager_get(cmd);
+        if (!ret && copy_to_user(arg, cmd, sizeof(*cmd)))
+            ret = -EFAULT;
+        goto out;
     }
+    ret = ksu_dynamic_manager_set(cmd);
 
-    if (cmd.operation == DYNAMIC_MANAGER_OP_GET && copy_to_user(arg, &cmd, sizeof(cmd))) {
-        pr_err("dynamic_manager: copy_to_user failed\n");
-        return -EFAULT;
-    }
-
-    return 0;
-#endif
+out:
+    kfree(cmd);
+    return ret;
 }
 
 // IOCTL handlers mapping table
@@ -1106,10 +1111,10 @@ static const struct ksu_ioctl_cmd_map ksu_ioctl_handlers[] = {
         .perm_check = manager_or_root
     },
     {
-        .cmd = KSU_IOCTL_DYNAMIC_MANAGER,
-        .name = "DYNAMIC_MANAGER",
-        .handler = do_dynamic_manager,
-        .perm_check = only_root
+        .cmd = KSU_IOCTL_MANAGER,
+        .name = "MANAGER",
+        .handler = do_manager,
+        .perm_check = manager_or_root
     },
     {
         .cmd = 0,

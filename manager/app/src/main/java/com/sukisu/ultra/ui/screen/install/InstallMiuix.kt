@@ -44,6 +44,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.sukisu.ultra.R
 import com.sukisu.ultra.getKernelVersion
 import com.sukisu.ultra.ui.component.dialog.rememberConfirmDialog
@@ -66,6 +67,7 @@ import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
+import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
@@ -320,26 +322,74 @@ internal fun InstallScreenMiuix(
                                     summary = stringResource(id = R.string.enable_adb_summary),
                                     onCheckedChange = actions.onSelectEnableAdb
                                 )
-                                TextField(
-                                    value = uiState.spoofRelease,
-                                    onValueChange = actions.onSpoofReleaseChange,
-                                    label = stringResource(R.string.kernel_spoof_release),
-                                    useLabelAsPlaceholder = true,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                                    singleLine = true
+                                CheckboxPreference(
+                                    title = stringResource(id = R.string.install_block_modules),
+                                    checked = uiState.blockModulesEnabled,
+                                    summary = stringResource(id = R.string.install_block_modules_warning),
+                                    onCheckedChange = actions.onSelectBlockModules
                                 )
-                                TextField(
-                                    value = uiState.spoofVersion,
-                                    onValueChange = actions.onSpoofVersionChange,
-                                    label = stringResource(R.string.kernel_spoof_version),
-                                    useLabelAsPlaceholder = true,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                                    singleLine = true
+                                if (uiState.blockModulesEnabled) {
+                                    TextField(
+                                        value = uiState.blockModules,
+                                        onValueChange = actions.onBlockModulesChange,
+                                        label = stringResource(id = R.string.install_block_modules_list),
+                                        useLabelAsPlaceholder = true,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                                        singleLine = true
+                                    )
+                                    Text(
+                                        text = stringResource(
+                                            if (uiState.blockModulesValid) {
+                                                R.string.install_block_modules_summary
+                                            } else {
+                                                R.string.install_block_modules_invalid
+                                            }
+                                        ),
+                                        fontSize = 12.sp,
+                                        color = if (uiState.blockModulesValid) {
+                                            colorScheme.onSurfaceVariantSummary
+                                        } else {
+                                            colorScheme.error
+                                        },
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                    )
+                                }
+                                CheckboxPreference(
+                                    title = stringResource(id = R.string.kernel_spoof),
+                                    checked = uiState.spoofEnabled,
+                                    summary = stringResource(id = R.string.kernel_spoof_summary),
+                                    onCheckedChange = actions.onSpoofEnabledChange
                                 )
+                                AnimatedVisibility(
+                                    visible = uiState.spoofEnabled,
+                                    enter = expandVertically() + fadeIn(),
+                                    exit = shrinkVertically() + fadeOut()
+                                ) {
+                                    Column {
+                                        TextField(
+                                            value = uiState.spoofRelease,
+                                            onValueChange = actions.onSpoofReleaseChange,
+                                            label = stringResource(R.string.kernel_spoof_release),
+                                            useLabelAsPlaceholder = true,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                                            singleLine = true
+                                        )
+                                        TextField(
+                                            value = uiState.spoofVersion,
+                                            onValueChange = actions.onSpoofVersionChange,
+                                            label = stringResource(R.string.kernel_spoof_version),
+                                            useLabelAsPlaceholder = true,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                                            singleLine = true
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -409,7 +459,7 @@ internal fun InstallScreenMiuix(
                                 .fillMaxWidth()
                                 .padding(top = 12.dp),
                             text = stringResource(id = R.string.install_next),
-                            enabled = uiState.installMethod != null,
+                            enabled = uiState.installMethod != null && uiState.blockModulesValid,
                             colors = ButtonDefaults.textButtonColorsPrimary(),
                             onClick = actions.onNext
                         )

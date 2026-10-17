@@ -255,16 +255,29 @@ pub fn set_sepolicy(payload: *const u8, payload_len: u64) -> Result<i32> {
     ksuctl(ksu_uapi::KSU_IOCTL_SET_SEPOLICY, &raw mut ioctl_cmd)
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FeatureState {
+    pub value: u64,
+    pub supported: bool,
+    /// Forced by boot config (ksu_config), the kernel refuses to change it
+    pub forced: bool,
+}
+
 /// Get feature value and support status from kernel
-/// Returns (value, supported)
-pub fn get_feature(feature_id: u32) -> Result<(u64, bool)> {
+pub fn get_feature(feature_id: u32) -> Result<FeatureState> {
     let mut cmd = ksu_uapi::ksu_get_feature_cmd {
         feature_id,
         value: 0,
         supported: 0,
     };
     ksuctl(ksu_uapi::KSU_IOCTL_GET_FEATURE, &raw mut cmd)?;
-    Ok((cmd.value, cmd.supported != 0))
+    let flags = u32::from(cmd.supported);
+    Ok(FeatureState {
+        value: cmd.value,
+        // older kernels report 1 for supported, matching the flag
+        supported: flags & ksu_uapi::KSU_FEATURE_FLAG_SUPPORTED != 0,
+        forced: flags & ksu_uapi::KSU_FEATURE_FLAG_FORCED != 0,
+    })
 }
 
 /// Set feature value in kernel
@@ -446,45 +459,5 @@ pub fn set_spoof_cpu(
         hwcap2,
     };
     ksuctl(ksu_uapi::KSU_IOCTL_SET_SPOOF_CPU, &raw mut cmd)?;
-    Ok(())
-}
-
-pub fn dynamic_manager_set(size: u32, hash: [u8; 64]) -> anyhow::Result<()> {
-    let mut cmd = ksu_uapi::ksu_dynamic_manager_cmd {
-        operation: ksu_uapi::DYNAMIC_MANAGER_OP_SET,
-        size,
-        hash,
-    };
-    ksuctl(ksu_uapi::KSU_IOCTL_DYNAMIC_MANAGER, &raw mut cmd)?;
-    Ok(())
-}
-
-pub fn dynamic_manager_set_synchronous(size: u32, hash: [u8; 64]) -> anyhow::Result<()> {
-    let mut cmd = ksu_uapi::ksu_dynamic_manager_cmd {
-        operation: ksu_uapi::DYNAMIC_MANAGER_OP_SET_SYNCHRONOUS,
-        size,
-        hash,
-    };
-    ksuctl(ksu_uapi::KSU_IOCTL_DYNAMIC_MANAGER, &raw mut cmd)?;
-    Ok(())
-}
-
-pub fn dynamic_manager_get() -> anyhow::Result<(u32, [u8; 64])> {
-    let mut cmd = ksu_uapi::ksu_dynamic_manager_cmd {
-        operation: ksu_uapi::DYNAMIC_MANAGER_OP_GET,
-        size: 0,
-        hash: [0; 64],
-    };
-    ksuctl(ksu_uapi::KSU_IOCTL_DYNAMIC_MANAGER, &raw mut cmd)?;
-    Ok((cmd.size, cmd.hash))
-}
-
-pub fn dynamic_manager_clear() -> anyhow::Result<()> {
-    let mut cmd = ksu_uapi::ksu_dynamic_manager_cmd {
-        operation: ksu_uapi::DYNAMIC_MANAGER_OP_WIPE,
-        size: 0,
-        hash: [0; 64],
-    };
-    ksuctl(ksu_uapi::KSU_IOCTL_DYNAMIC_MANAGER, &raw mut cmd)?;
     Ok(())
 }

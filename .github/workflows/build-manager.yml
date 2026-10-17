@@ -170,20 +170,12 @@ jobs:
        github.event_name == 'pull_request')
 
     uses: ./.github/workflows/build-lkm.yml
-
     with:
-      # Release builds embed the production key as the primary expected
-      # signature (KSU_EXPECTED_SIZE/HASH), so the kernel no longer sets the
-      # PR_BUILD flag and the manager shows no "PR signature" warning.
-      # PR builds keep using the temporary second channel (expected_size2),
-      # where the PR warning is intentional.
-      expected_size: ${{ github.event_name != 'pull_request' && needs.generate-key.outputs.expected_size || '' }}
-      expected_hash: ${{ github.event_name != 'pull_request' && needs.generate-key.outputs.expected_hash || '' }}
-      expected_size2: ${{ github.event_name == 'pull_request' && needs.generate-key.outputs.expected_size || '' }}
-      expected_hash2: ${{ github.event_name == 'pull_request' && needs.generate-key.outputs.expected_hash || '' }}
-
+      # The production keystore (or the PR ephemeral key) is embedded as the
+      # primary expected signature, so the kernel accepts the manager APK.
+      expected_size: ${{ needs.generate-key.outputs.expected_size || '' }}
+      expected_hash: ${{ needs.generate-key.outputs.expected_hash || '' }}
     secrets: inherit
-
 
   build-ksuinit:
     needs: [changes]
@@ -417,7 +409,7 @@ jobs:
             -e "s/val defaultManagerName = .*/val defaultManagerName = \"${word10}\"/" \
             app/build.gradle.kts
           sed -i \
-            -e "s/return getGitDescribe()/return \"4.2.0\"/" \
+            -e "s/return getGitDescribe()/return \"4.2.1\"/" \
             build.gradle.kts
 
           # Neutralize detection-grade manifest surfaces: zip/apk and

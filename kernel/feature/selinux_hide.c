@@ -75,6 +75,9 @@ static void (*context_struct_compute_av_fn)(struct policydb *policydb, struct co
                                             struct context *tcontext, u16 tclass, struct av_decision *avd,
                                             struct extended_perms *xperms) = NULL;
 
+static write_op_fn *context_write, *access_write;
+static write_op_fn orig_context_write, orig_access_write;
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
 #define ksu_avc_has_perm_compat(...) avc_has_perm(__VA_ARGS__)
 #define ksu_security_bounded_transition_compat(...) security_bounded_transition(__VA_ARGS__)
@@ -88,9 +91,6 @@ static void (*context_struct_compute_av_fn)(struct policydb *policydb, struct co
 #else
 #define ksu_task_security_struct cred_security_struct
 #endif
-
-static write_op_fn *context_write, *access_write;
-static write_op_fn orig_context_write, orig_access_write;
 
 static ssize_t my_write_context(struct file *file, char *buf, size_t size)
 {
@@ -747,24 +747,15 @@ static int security_context_to_sid_with_policy(struct selinux_policy *policy, co
     rc = string_to_context_struct(policydb, orig_policydb, sidtab, orig_sidtab, scontext2, scontext3, &context,
                                   &orig_context, def_sid, &orig_rc);
     if (!rc) {
-#ifdef KSU_COMPAT_HAS_CONTEXT_ADD_HASH
-        rc = context_add_hash(policydb, &context);
-#endif
-        if (!rc)
-            rc = sidtab_context_to_sid(sidtab, &context, sid);
+        rc = sidtab_context_to_sid(sidtab, &context, sid);
         // rc should not be frozen
         context_destroy(&context);
         // removed: if (rc == -ESTALE)
         if (!orig_rc) {
-#ifdef KSU_COMPAT_HAS_CONTEXT_ADD_HASH
-            orig_rc = context_add_hash(orig_policydb, &orig_context);
-#endif
-            if (!orig_rc) {
-                // sync to global sidtab
-                orig_rc = sidtab_context_to_sid(orig_sidtab, &orig_context, &orig_sid);
-                if (orig_sid_p)
-                    *orig_sid_p = orig_sid;
-            }
+            // sync to global sidtab
+            orig_rc = sidtab_context_to_sid(orig_sidtab, &orig_context, &orig_sid);
+            if (orig_sid_p)
+                *orig_sid_p = orig_sid;
             context_destroy(&orig_context);
         }
     }

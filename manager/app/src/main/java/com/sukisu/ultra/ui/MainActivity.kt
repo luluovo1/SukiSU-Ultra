@@ -65,7 +65,6 @@ import com.sukisu.ultra.ui.component.bottombar.SideRail
 import com.sukisu.ultra.ui.component.bottombar.rememberMainPagerState
 import com.sukisu.ultra.ui.component.bottombar.useNavigationRail
 import com.sukisu.ultra.ui.kernelFlash.KernelFlashScreen
-import com.sukisu.ultra.ui.navigation3.HandleZipFileIntent
 import com.sukisu.ultra.ui.navigation3.IntentDispatcher
 import com.sukisu.ultra.ui.navigation3.LocalNavigator
 import com.sukisu.ultra.ui.navigation3.Navigator
@@ -74,7 +73,7 @@ import com.sukisu.ultra.ui.navigation3.rememberNavigator
 import com.sukisu.ultra.ui.screen.about.AboutScreen
 import com.sukisu.ultra.ui.screen.appprofile.AppProfileScreen
 import com.sukisu.ultra.ui.screen.colorpalette.ColorPaletteScreen
-import com.sukisu.ultra.ui.screen.dynamicmanager.DynamicManagerScreen
+import com.sukisu.ultra.ui.screen.dynamicmanagers.DynamicManagersScreen
 import com.sukisu.ultra.ui.screen.executemoduleaction.ExecuteModuleActionScreen
 import com.sukisu.ultra.ui.screen.flash.FlashScreen
 import com.sukisu.ultra.ui.screen.home.HomePager
@@ -83,6 +82,7 @@ import com.sukisu.ultra.ui.screen.kpm.KpmScreen
 import com.sukisu.ultra.ui.screen.module.ModulePager
 import com.sukisu.ultra.ui.screen.modulerepo.ModuleRepoDetailScreen
 import com.sukisu.ultra.ui.screen.modulerepo.ModuleRepoScreen
+import com.sukisu.ultra.ui.screen.scriptrun.ScriptRunScreen
 import com.sukisu.ultra.ui.screen.settings.SettingPager
 import com.sukisu.ultra.ui.screen.settings.tools.ToolsScreen
 import com.sukisu.ultra.ui.screen.sulog.SulogScreen
@@ -135,12 +135,6 @@ class MainActivity : ComponentActivity() {
         val splashScreen = installSplashScreen()
         splashStartedAt = SystemClock.uptimeMillis()
         super.onCreate(savedInstanceState)
-        // Never let the system store a snapshot of the manager UI in the
-        // snapshot cache (/data/system_ce/<user>/snapshots), which backs
-        // both the recents screen and the snapshot starting window.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            setRecentsScreenshotEnabled(false)
-        }
         splashScreen.setKeepOnScreenCondition {
             !contentReady || SystemClock.uptimeMillis() - splashStartedAt < splashAnimationDurationMs
         }
@@ -194,7 +188,6 @@ class MainActivity : ComponentActivity() {
             ) {
                 KernelSUTheme(appSettings = appSettings, uiMode = uiMode) {
                     IntentDispatcher(intentChannel = intentChannel)
-                    HandleZipFileIntent()
                     val swipeDismiss = if (uiState.enableSwipeDismiss) {
                         if (LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl) {
                             NavSwipeDirection.RightToLeft
@@ -204,6 +197,13 @@ class MainActivity : ComponentActivity() {
                     } else {
                         NavSwipeDirection.None
                     }
+                    val flashRoute = navigator.current() as? Route.Flash
+                    var flashBackEnabled by remember(flashRoute) { mutableStateOf(false) }
+                    val scriptRunRoute = navigator.current() as? Route.ScriptRun
+                    var scriptRunBackEnabled by remember(scriptRunRoute) { mutableStateOf(true) }
+                    // Read here, not inside the NavDisplay builder: NavDisplay only rebuilds its entries
+                    // (and their swipeDismiss) when the builder lambda changes, so it must capture the value.
+                    val scriptRunSwipeDismiss = if (scriptRunBackEnabled) swipeDismiss else NavSwipeDirection.None
                     val mainScreenEntry = @Composable {
                         MainScreen(
                             initialPage = selectedMainPage,
@@ -239,11 +239,26 @@ class MainActivity : ComponentActivity() {
                             entry<Route.ModuleRepo>(swipeDismiss = swipeDismiss) { ModuleRepoScreen() }
                             entry<Route.ModuleRepoDetail>(swipeDismiss = swipeDismiss) { key -> ModuleRepoDetailScreen(key.module) }
                             entry<Route.Install>(swipeDismiss = swipeDismiss) { key -> InstallScreen(preselectedKernelUri = key.preselectedKernelUri) }
-                            entry<Route.Flash>(swipeDismiss = swipeDismiss) { key -> FlashScreen(key.flashIt) }
+                            entry<Route.Flash>(swipeDismiss = if (flashBackEnabled) swipeDismiss else NavSwipeDirection.None) { key ->
+                                FlashScreen(
+                                    key.flashIt,
+                                    onBackEnabledChange = { enabled ->
+                                        if (navigator.current() == key) flashBackEnabled = enabled
+                                    },
+                                )
+                            }
                             entry<Route.ExecuteModuleAction>(swipeDismiss = swipeDismiss) { key ->
                                 ExecuteModuleActionScreen(
                                     key.moduleId,
                                     key.fromShortcut
+                                )
+                            }
+                            entry<Route.ScriptRun>(swipeDismiss = scriptRunSwipeDismiss) { key ->
+                                ScriptRunScreen(
+                                    key.arg,
+                                    onBackEnabledChange = { enabled ->
+                                        if (navigator.current() == key) scriptRunBackEnabled = enabled
+                                    },
                                 )
                             }
                             entry<Route.Home>(swipeDismiss = swipeDismiss) { mainScreenEntry() }
@@ -262,7 +277,7 @@ class MainActivity : ComponentActivity() {
                                 entry<Route.SuSFS>(swipeDismiss = swipeDismiss)  { SuSFSScreen() }
                                 entry<Route.Tool>(swipeDismiss = swipeDismiss)  { ToolsScreen() }
                                 entry<Route.UmountManager>(swipeDismiss = swipeDismiss)  { UmountManagerScreen() }
-                                entry<Route.DynamicManager>(swipeDismiss = swipeDismiss)  { DynamicManagerScreen() }
+                                entry<Route.DynamicManagers>(swipeDismiss = swipeDismiss) { DynamicManagersScreen() }
                         }
                     }
 
@@ -368,7 +383,7 @@ fun MainScreen(
     }
     val uiMode = LocalUiMode.current
     val surfaceColor = when (uiMode) {
-        UiMode.Material -> MaterialTheme.colorScheme.surface // Blur is not used in Material, this is just a placeholder
+        UiMode.Material -> MaterialTheme.colorScheme.surfaceContainer // Matches the Material page background behind the glass bar
         UiMode.Miuix -> MiuixTheme.colorScheme.surface
     }
     val blurBackdrop = rememberBlurBackdrop(enableBlur)
@@ -403,7 +418,8 @@ fun MainScreen(
                             mode = pagerMode,
                             enabled = userScrollEnabled,
                         )
-                        .then(if (enableFloatingBottomBar && enableFloatingBottomBarBlur) Modifier.layerBackdrop(backdrop) else Modifier),
+                        // Material always floats its bar, so only the glass toggle matters there.
+                        .then(if ((uiMode == UiMode.Material || enableFloatingBottomBar) && enableFloatingBottomBarBlur) Modifier.layerBackdrop(backdrop) else Modifier),
                     state = mainPagerState.pagerState,
                     beyondViewportPageCount = if (contentReady) 3 else 0,
                     overscrollEffect = null,
