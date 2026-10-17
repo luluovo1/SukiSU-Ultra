@@ -22,6 +22,10 @@ jobs:
         fetch-depth: 0
 
     - name: Download artifacts
+      # Kernel artifacts are only present in this run when the caller
+      # built them (kernel/ changed or a release build). Downloading
+      # unconditionally would fail on userspace-only pushes.
+      if: ${{ inputs.pack_lkm || inputs.pack_ksuinit }}
       uses: actions/download-artifact@v8
     
     - name: Prepare LKM files

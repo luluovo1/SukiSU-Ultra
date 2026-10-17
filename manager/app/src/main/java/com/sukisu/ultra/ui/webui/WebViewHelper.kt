@@ -27,6 +27,26 @@ import com.sukisu.ultra.ui.util.withMainUserUid
 import com.sukisu.ultra.ui.viewmodel.SuperUserViewModel
 import java.io.File
 
+/**
+ * Maximum number of activity recreations after WebView renderer deaths
+ * before giving up and showing an error (prevents restart loops caused by
+ * an environment that kills the renderer immediately on every load).
+ */
+internal const val MAX_RENDERER_RESTARTS = 2
+
+/**
+ * Build the intent for the next renderer recovery attempt. The counter
+ * travels in the intent so a crash loop can not reset it by recreating
+ * the activity.
+ */
+internal fun Activity.nextRestartIntent(): Intent {
+    val next = Intent(intent)
+    next.putExtra(EXTRA_RENDERER_RESTARTS, intent.getIntExtra(EXTRA_RENDERER_RESTARTS, 0) + 1)
+    return next
+}
+
+internal const val EXTRA_RENDERER_RESTARTS = "webui_renderer_restarts"
+
 fun Activity.setTaskDescription(label: String) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
         @Suppress("DEPRECATION")
@@ -73,6 +93,22 @@ internal suspend fun prepareWebView(
         val shell = createRootShell(true)
         webUIState.rootShell = shell
 
+        // Mirror the module webroot into app-private storage before the
+        // WebView starts loading. The previous behavior read every asset
+        // through the root shell (one `dd` command per 8 KiB block — see
+        // libsu ShellIO), which stalled module pages with large assets
+        // (e.g. multi-megabyte fonts) long enough for the WebView renderer
+        // to be killed, leaving a permanently white page.
+        val webRoot = File("${webUIState.modDir}/webroot")
+        val assetHandler = SuFilePathHandler(
+            activity,
+            webRoot,
+            shell,
+            { webUIState.currentInsets },
+            { enable -> webUIState.isInsetsEnabled = enable }
+        )
+        assetHandler.prepareCache()
+
         withContext(Dispatchers.Main) {
             activity.setTaskDescription(activity.getString(R.string.app_name) + " - ${moduleInfo.name}")
 
@@ -88,18 +124,9 @@ internal suspend fun prepareWebView(
                 allowFileAccess = false
             }
 
-            val webRoot = File("${webUIState.modDir}/webroot")
             val webViewAssetLoader = WebViewAssetLoader.Builder()
                 .setDomain("mui.kernelsu.org")
-                .addPathHandler(
-                    "/",
-                    SuFilePathHandler(
-                        activity,
-                        webRoot,
-                        shell,
-                        { webUIState.currentInsets },
-                        { enable -> webUIState.isInsetsEnabled = enable })
-                )
+                .addPathHandler("/", assetHandler)
                 .build()
 
             // WebViewClient
@@ -142,6 +169,57 @@ internal suspend fun prepareWebView(
                     webUIState.webCanGoBack = view?.canGoBack() ?: false
                     if (webUIState.isInsetsEnabled) webUIState.webView?.evaluateJavascript(webUIState.currentInsets.js, null)
                     super.doUpdateVisitedHistory(view, url, isReload)
+                }
+
+                override fun onReceivedError(
+                    view: WebView?,
+                    request: WebResourceRequest?,
+                    error: android.webkit.WebResourceError?
+                ) {
+                    // Surface main-document failures instead of leaving an
+                    // empty white page; sub-resource failures are logged
+                    // only (pages may reference optional assets).
+                    val isMainDocument = request?.isForMainFrame ?: false
+                    val message = error?.description?.toString() ?: "unknown error"
+                    android.util.Log.e(
+                        "WebUI",
+                        "load error mainFrame=$isMainDocument url=${request?.url}: $message"
+                    )
+                    if (isMainDocument && view != null) {
+                        webUIState.uiEvent = WebUIEvent.Error(
+                            activity.getString(R.string.module_webui_load_failed, message)
+                        )
+                    }
+                    super.onReceivedError(view, request, error)
+                }
+
+                override fun onRenderProcessGone(
+                    view: WebView?,
+                    detail: android.webkit.RenderProcessGoneDetail?
+                ): Boolean {
+                    // Without this callback a killed renderer leaves the
+                    // WebView showing a blank surface forever while the
+                    // activity stays alive. Rebuild the page from scratch
+                    // instead, retrying at most twice so a crash loop can
+                    // not pin the UI in a restart cycle.
+                    val wasCrash = detail?.didCrash() != false
+                    val currentIntent = activity.intent
+                    val restarts = currentIntent?.getIntExtra(EXTRA_RENDERER_RESTARTS, 0) ?: 0
+                    android.util.Log.e(
+                        "WebUI",
+                        "render process gone (crash=$wasCrash, restarts=$restarts)"
+                    )
+                    if (restarts >= MAX_RENDERER_RESTARTS) {
+                        webUIState.uiEvent = WebUIEvent.Error(
+                            activity.getString(R.string.module_webui_renderer_crashed)
+                        )
+                    } else if (!activity.isFinishing && !activity.isDestroyed) {
+                        activity.startActivity(activity.nextRestartIntent())
+                        activity.finish()
+                    }
+                    // We handled the situation: do not let the framework
+                    // kill the whole process as well.
+                    return true
                 }
             }
 

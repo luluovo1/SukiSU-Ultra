@@ -42,6 +42,31 @@ on:
 
 jobs:
 
+  # Detect whether anything under kernel/ actually changed. The LKM and
+  # ksuinit builds (7 KMIs + 2 arches each) are the most expensive part of
+  # this workflow and are pure waste on userspace/manager-only pushes, so
+  # they are skipped when this job reports no kernel changes. Releases
+  # (tag pushes) and manual dispatches always rebuild everything, which
+  # keeps published artifacts complete even if this detection ever
+  # misbehaves.
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      kernel: ${{ steps.filter.outputs.kernel }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            kernel:
+              - 'kernel/**'
+              - '.github/workflows/build-lkm.yml'
+              - '.github/workflows/ddk-lkm.yml'
+              - '.github/workflows/ksuinit.yml'
+
   generate-key:
     runs-on: ubuntu-latest
 
@@ -131,7 +156,18 @@ jobs:
 
 
   build-lkm:
-    needs: generate-key
+    needs: [generate-key, changes]
+
+    # Skip the KMI matrix when kernel/ is untouched (e.g. userspace-only
+    # pushes). Tags and manual dispatches always rebuild so releases stay
+    # complete; PRs keep their current behavior to avoid rewriting CI
+    # semantics for contributors.
+    if: |
+      needs.changes.result == 'success' &&
+      (needs.changes.outputs.kernel == 'true' ||
+       startsWith(github.ref, 'refs/tags/') ||
+       github.event_name == 'workflow_dispatch' ||
+       github.event_name == 'pull_request')
 
     uses: ./.github/workflows/build-lkm.yml
 
@@ -150,11 +186,32 @@ jobs:
 
 
   build-ksuinit:
+    needs: [changes]
+
+    # Same policy as build-lkm: ksuinit is built from kernel/ sources.
+    if: |
+      needs.changes.result == 'success' &&
+      (needs.changes.outputs.kernel == 'true' ||
+       startsWith(github.ref, 'refs/tags/') ||
+       github.event_name == 'workflow_dispatch' ||
+       github.event_name == 'pull_request')
+
     uses: ./.github/workflows/ksuinit.yml
 
 
   build-ksud:
-    needs: [build-lkm, build-ksuinit]
+    needs: [changes, build-lkm, build-ksuinit]
+
+    # always(): build-lkm/build-ksuinit are intentionally skipped on
+    # userspace/manager-only pushes, and a skipped needs entry would
+    # otherwise propagate the skip to this job. !failure() still stops
+    # this job when generate-key or the filter genuinely failed.
+    if: |
+      always() &&
+      needs.changes.result == 'success' &&
+      !failure() && !cancelled() &&
+      (needs.build-lkm.result == 'success' || needs.build-lkm.result == 'skipped') &&
+      (needs.build-ksuinit.result == 'success' || needs.build-ksuinit.result == 'skipped')
 
     strategy:
       matrix:
@@ -167,8 +224,11 @@ jobs:
 
     with:
       target: ${{ matrix.target }}
-      pack_lkm: true
-      pack_ksuinit: true
+      # Pack the embedded artifacts only when this run actually built
+      # them. A skipped build-lkm (userspace-only push) must not make
+      # ksud.yml download artifacts that do not exist in this run.
+      pack_lkm: ${{ needs.build-lkm.result == 'success' && true || false }}
+      pack_ksuinit: ${{ needs.build-ksuinit.result == 'success' && true || false }}
 
 
   # ------------------------------------------------------------
@@ -228,22 +288,35 @@ jobs:
 
           echo "Building spoofed Manager"
 
-          # Generate fifteen random lowercase words.
-          word1=$(tr -dc 'a-z' </dev/urandom | head -c6)
-          word2=$(tr -dc 'a-z' </dev/urandom | head -c6)
-          word3=$(tr -dc 'a-z' </dev/urandom | head -c6)
-          word4=$(tr -dc 'a-z' </dev/urandom | head -c6)
-          word5=$(tr -dc 'a-z' </dev/urandom | head -c6)
-          word6=$(tr -dc 'a-z' </dev/urandom | head -c6)
-          word7=$(tr -dc 'a-z' </dev/urandom | head -c6)
-          word8=$(tr -dc 'a-z' </dev/urandom | head -c6)
-          word9=$(tr -dc 'a-z' </dev/urandom | head -c6)
-          word10=$(tr -dc 'a-z' </dev/urandom | head -c6)
-          word11=$(tr -dc 'a-z' </dev/urandom | head -c6)
-          word12=$(tr -dc 'a-z' </dev/urandom | head -c6)
-          word13=$(tr -dc 'a-z' </dev/urandom | head -c6)
-          word14=$(tr -dc 'a-z' </dev/urandom | head -c6)
-          word15=$(tr -dc 'a-z' </dev/urandom | head -c6)
+          # Derive the random words deterministically from the manager
+          # version code instead of /dev/urandom. The words only rotate
+          # when the version code crosses a hundred boundary
+          # (40100..40199 -> one set, 40200..40299 -> the next), so
+          # builds within the same hundred keep a stable package name
+          # and can be installed over each other, while the identity
+          # still rotates regularly for detection purposes. The version
+          # formula mirrors manager/build.gradle.kts getVersionCode().
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          VERSION_WINDOW=$(( (4 * 10000 + COMMIT_COUNT - 2815) / 100 ))
+          echo "Random-word seed (version window): $VERSION_WINDOW"
+
+          mapfile -t WORDS < <(python3 "$GITHUB_WORKSPACE/.github/scripts/random_words.py" "$VERSION_WINDOW")
+
+          word1=${WORDS[0]}
+          word2=${WORDS[1]}
+          word3=${WORDS[2]}
+          word4=${WORDS[3]}
+          word5=${WORDS[4]}
+          word6=${WORDS[5]}
+          word7=${WORDS[6]}
+          word8=${WORDS[7]}
+          word9=${WORDS[8]}
+          word10=${WORDS[9]}
+          word11=${WORDS[10]}
+          word12=${WORDS[11]}
+          word13=${WORDS[12]}
+          word14=${WORDS[13]}
+          word15=${WORDS[14]}
 
           echo "Generated randomized package components."
 

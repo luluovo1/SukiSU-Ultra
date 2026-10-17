@@ -15,6 +15,7 @@ import com.topjohnwu.superuser.io.SuFileInputStream;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -58,6 +59,16 @@ public final class SuFilePathHandler implements WebViewAssetLoader.PathHandler {
     @NonNull
     private final File mDirectory;
 
+    /**
+     * App-private mirror of {@link #mDirectory}; null when unavailable.
+     */
+    private File mCacheDir;
+
+    /**
+     * True once {@link #prepareCache()} successfully built the mirror.
+     */
+    private volatile boolean mCacheReady;
+
     private final Shell mShell;
     private final InsetsSupplier mInsetsSupplier;
     private final OnInsetsRequestedListener mOnInsetsRequestedListener;
@@ -99,11 +110,114 @@ public final class SuFilePathHandler implements WebViewAssetLoader.PathHandler {
                         + "\" doesn't exist under an allowed app internal storage directory");
             }
             mShell = rootShell;
+
+            // Local mirror of the module webroot. Files are fetched through
+            // the root shell only once when the mirror is (re)built; every
+            // WebView request afterwards is served from app-private storage.
+            // The previous in-place reading path executed a `dd ... ; echo`
+            // command per 8 KiB block (see libsu ShellIO), so a single 18 MB
+            // font in a module webroot cost thousands of shell round trips
+            // and stalled page loads long enough for the renderer process to
+            // be killed, which showed up as an unresponsive white page.
+            File cacheBase = context.getExternalCacheDir();
+            if (cacheBase == null) cacheBase = context.getCacheDir();
+            String moduleId = new File(mDirectory.getPath()).getName();
+            mCacheDir = new File(cacheBase, "webui-" + moduleId);
         } catch (IOException e) {
             throw new IllegalArgumentException(
                     "Failed to resolve the canonical path for the given directory: "
                             + directory.getPath(), e);
         }
+    }
+
+    /**
+     * Mirror the exposed module directory into app-private storage so that
+     * WebView requests never touch the root shell on the hot path. Safe to
+     * call on a background thread; re-copies only when the source directory
+     * metadata changed.
+     *
+     * @return true when the cache is usable.
+     */
+    public boolean prepareCache() {
+        if (mCacheDir == null || mShell == null) return false;
+        // getCanonicalFileIfChild() below requires the parent directory to
+        // exist; on the very first open the mirror does not exist yet.
+        if (!mCacheDir.isDirectory() && !mCacheDir.mkdirs()) {
+            return false;
+        }
+        try {
+            // Compare source and cache timestamps: the mirror is only
+            // rebuilt when the module was (re)installed or updated.
+            String srcStamp = firstLine(runRoot("stat -c %Y '" + mDirectory.getPath() + "'"));
+            if (srcStamp == null) return false;
+            File stampFile = new File(mCacheDir, ".stamp");
+            if (stampFile.isFile()) {
+                String cached = firstLine(runRoot("cat '" + stampFile.getPath() + "'"));
+                if (srcStamp.equals(cached)) {
+                    mCacheReady = true;
+                    return true;
+                }
+            }
+            // (Re)build the mirror. `cp -a` keeps permissions and mtime; the
+            // explicit chmod makes the tree readable for the renderer process
+            // which runs under a sandboxed uid.
+            String dst = mCacheDir.getPath();
+            String cmd =
+                    "rm -rf '" + dst + "' && " +
+                    "mkdir -p '" + dst + "' && " +
+                    "cp -a '" + mDirectory.getPath() + "'/. '" + dst + "/' && " +
+                    "chmod -R u=rwX,go=rX '" + dst + "' && " +
+                    "echo '" + srcStamp + "' > '" + dst + "/.stamp'";
+            String out = runRoot(cmd);
+            if (out == null) return false;
+            // cp -a preserved the source directory mtime; the stamp file is
+            // written last, so a torn copy can not masquerade as fresh.
+            boolean ok = new File(dst, ".stamp").isFile();
+            mCacheReady = ok;
+            return ok;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to prepare webroot cache", e);
+            return false;
+        }
+    }
+
+    private String runRoot(String cmd) {
+        try {
+            java.util.List<String> stdout = new java.util.ArrayList<>();
+            java.util.List<String> stderr = new java.util.ArrayList<>();
+            Shell.Result result = mShell.newJob().add(cmd).to(stdout, stderr).exec();
+            if (!result.isSuccess() && stdout.isEmpty()) return null;
+            return String.join("\n", stdout);
+        } catch (Exception e) {
+            Log.e(TAG, "root command failed: " + cmd, e);
+            return null;
+        }
+    }
+
+    private static String firstLine(String s) {
+        if (s == null) return null;
+        int idx = s.indexOf('\n');
+        String line = (idx >= 0 ? s.substring(0, idx) : s).trim();
+        return line.isEmpty() ? null : line;
+    }
+
+    /**
+     * Resolve the request path against the local mirror, refusing path
+     * traversal outside of it.
+     */
+    private File cachedFile(String path) {
+        if (mCacheDir == null || !mCacheReady) return null;
+        try {
+            File file = getCanonicalFileIfChild(mCacheDir, path);
+            if (file != null && file.isFile()) return file;
+        } catch (IOException ignored) {
+        }
+        return null;
+    }
+
+    private InputStream openCached(File file) throws IOException {
+        InputStream fis = new FileInputStream(file);
+        return handleSvgzStream(file.getPath(), fis);
     }
 
     public static String getCanonicalDirPath(@NonNull File file) throws IOException {
@@ -208,6 +322,15 @@ public final class SuFilePathHandler implements WebViewAssetLoader.PathHandler {
             );
         }
         try {
+            // Hot path: serve from the local mirror prepared by
+            // prepareCache(). Only cache misses fall back to the slow
+            // root-shell reading path below.
+            File cached = cachedFile(path);
+            if (cached != null) {
+                InputStream cachedStream = openCached(cached);
+                String cachedMime = guessMimeType(path);
+                return new WebResourceResponse(cachedMime, null, cachedStream);
+            }
             File file = getCanonicalFileIfChild(mDirectory, path);
             if (file != null) {
                 InputStream is = openFile(file, mShell);
