@@ -7,7 +7,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -17,7 +16,6 @@ import com.sukisu.ultra.ui.UiMode
 import com.sukisu.ultra.ui.navigation3.Navigator
 import com.sukisu.ultra.ui.navigation3.Route
 import com.sukisu.ultra.ui.util.getSuSFSStatus
-import com.sukisu.ultra.ui.util.rememberKpmAvailable
 import com.sukisu.ultra.ui.viewmodel.SettingsViewModel
 
 @Composable
@@ -29,8 +27,6 @@ fun SettingPager(
     val context = LocalContext.current
     val viewModel = viewModel<SettingsViewModel>()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val isKpmAvailable = rememberKpmAvailable()
-    val isSusfsSupported = getSuSFSStatus().equals("true", ignoreCase = true)
     val latestIsCurrentPage by rememberUpdatedState(isCurrentPage)
     val initialResumeHandled = rememberSaveable { mutableStateOf(false) }
 
@@ -60,6 +56,7 @@ fun SettingPager(
         onSetSuCompatMode = viewModel::setSuCompatMode,
         onSetKernelUmountEnabled = viewModel::setKernelUmountEnabled,
         onSetSelinuxHideEnabled = viewModel::setSelinuxHideEnabled,
+        onSetMountHideEnabled = viewModel::setMountHideEnabled,
         onSetSulogEnabled = viewModel::setSulogEnabled,
         onSetAdbRootEnabled = viewModel::setAdbRootEnabled,
         onSetShellSuAdbOnlyEnabled = viewModel::setShellSuAdbOnlyEnabled,
@@ -70,9 +67,8 @@ fun SettingPager(
         onOpenAbout = { navigator.push(Route.About) },
         onSetAlternativeIcon = { enabled -> viewModel.setAlternativeIcon(context, enabled) },
         onOpenTools = { navigator.push(Route.Tool) },
-        onOpenKpm = { navigator.push(Route.Kpm) },
         onOpenSusfsConfig = { navigator.push(Route.SuSFS) },
-        onOpenDynamicManagers = { navigator.push(Route.DynamicManagers) },
+        onOpenExtensions = { navigator.push(Route.Extensions) },
     )
 
     when (LocalUiMode.current) {
@@ -80,15 +76,11 @@ fun SettingPager(
             uiState = uiState,
             actions = actions,
             bottomInnerPadding = bottomInnerPadding,
-            isKpmAvailable = isKpmAvailable,
-            isSusfsSupported = isSusfsSupported
         )
         UiMode.Material -> SettingPagerMaterial(
             uiState = uiState,
             actions = actions,
             bottomInnerPadding = bottomInnerPadding,
-            isKpmAvailable = isKpmAvailable,
-            isSusfsSupported = isSusfsSupported
         )
     }
 }

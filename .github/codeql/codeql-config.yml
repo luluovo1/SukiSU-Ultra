@@ -1,0 +1,27 @@
+name: "CodeQL Config"
+
+languages:
+  - c
+  - cpp
+  - kotlin
+
+queries:
+  - uses: security-extended
+
+paths:
+  - kernel
+  - manager
+  - "*.sh"
+
+paths-ignore:
+  - manager/app/build
+  - manager/app/.gradle
+  - manager/**/build
+  - manager/.gradle
+
+  - "**/*.pb.cc"
+  - "**/*.pb.h"
+  - "**/generated/**"
+  - "**/minified/**"
+
+  - kernel/extension/kpm

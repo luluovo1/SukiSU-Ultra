@@ -91,6 +91,10 @@
     <string name="module_uninstall_failed">Failed to uninstall: %s</string>
     <string name="module_version">Version</string>
     <string name="module_author">Author</string>
+    <string name="module_preinit_no_space">preinit skipped: not enough space on /metadata</string>
+    <string name="module_preinit_error">preinit skipped: invalid preinit directory</string>
+    <string name="module_preinit_bootloop">preinit disabled after repeated boot failures</string>
+    <string name="module_preinit_unsupported">preinit skipped: not supported by the current kernel</string>
     <string name="show_system_apps">Show system apps</string>
     <string name="send_log">Send logs</string>
     <string name="safe_mode">Safe mode</string>
@@ -106,7 +110,6 @@
     <string name="home_click_to_learn_kernelsu">Learn how to install SukiSU and use modules.</string>
     <string name="home_support_title">Support Us</string>
     <string name="home_support_content">KernelSU is, and always will be, free, and open source. However, you can show us that you care by making a donation.</string>
-    <string name="home_gki_warning">Starting from v3.0.0, the GKI work mode will be used only in testing environments. We do not recommend it for daily use, and image files will no longer be provided.</string>
     <string name="about_source_code"><![CDATA[View source code at %1$s<br/>Join our %2$s channel<br/><br/>The icons are licensed under a special arrangement: drawn by 怡子曰曰, the copyright is held by 明风 OuO, and the vectorized icons are provided by this project.]]></string>
     <string name="profile" translatable="false">App Profile</string>
     <string name="profile_default">Default</string>
@@ -222,6 +225,10 @@
     <string name="settings_selinux_hide_summary">Prevent applications from detecting SELinux modifications</string>
     <string name="settings_selinux_hide_reboot_required">Reboot to take effect</string>
     <string name="settings_selinux_hide_failed">Error: %d</string>
+    <string name="settings_mount_hide">Hide suspicious mounts</string>
+    <string name="settings_mount_hide_summary">Filter KernelSU and module mount records from the /proc mount views of isolated and app processes</string>
+    <string name="settings_mount_hide_reboot_required">Reboot to take effect</string>
+    <string name="settings_mount_hide_failed">Error: %d</string>
     <string name="settings_sulog">SU Log</string>
     <string name="settings_sulog_summary">Record Root-related events into SukiSU sulog files</string>
     <string name="feature_status_unsupported_summary">Kernel does not support this feature</string>
@@ -272,7 +279,6 @@
     <string name="color_blue_grey">Blue Grey</string>
     <string name="color_sakura">Sakura</string>
     <string name="network_offline">Not connected to network</string>
-    <string name="module_repo_unavailable">Module repository is currently unavailable. Please try again later.</string>
     <string name="network_retry">Retry</string>
     <string name="tab_readme">README</string>
     <string name="tab_releases">Releases</string>
@@ -393,14 +399,7 @@
     <string name="kernel_spoof_release">Kernel Release</string>
     <string name="kernel_spoof_version">Kernel Version</string>
     <!-- Log Viewer -->
-    <string name="log_viewer_title">Log Viewer</string>
-    <string name="settings_view_sulog">View sulog logs</string>
-    <string name="settings_view_sulog_summary">Open sulog viewer</string>
     <string name="log_viewer_back">Back</string>
-    <string name="sulog_blocked_label">Blocked</string>
-    <string name="sulog_allowed_label">Allowed</string>
-    <string name="sulog_ioctl_label">Ioctl Escalation</string>
-    <string name="sulog_other_label">Other</string>
     <!-- Umount Manager -->
     <string name="umount_path_manager">Umount path management</string>
     <string name="umount_path_restart_notice">A reboot is required for changes to take effect. The system will apply the new configuration on the next boot.</string>
@@ -472,10 +471,7 @@
     <string name="horizon_kernel_summary">Flash AnyKernel3 format kernel zip</string>
     <!-- KPM -->
     <string name="kpm_title">KPM</string>
-    <string name="settings_kpm_summary">Manage kernel modules with KPM</string>
     <string name="kpm_empty">No installed kernel modules at this time</string>
-    <string name="kpm_version">Version</string>
-    <string name="kpm_author">Author</string>
     <string name="kpm_uninstall">Uninstall</string>
     <string name="kpm_uninstall_success">Uninstalled successfully</string>
     <string name="kpm_uninstall_failed">Failed to uninstall</string>
@@ -513,8 +509,6 @@
     <string name="allowlist_restore_success">Restoration successful. Changes will take effect after restart</string>
     <string name="allowlist_restore_failed">Restore failed</string>
     <!-- CPU Spoof -->
-    <string name="tools_spoof_cpu_title">CPU identity spoofing</string>
-    <string name="tools_spoof_cpu_summary">Mask real CPU MIDR, HWCAP and vvar</string>
     <string name="spoof_cpu_dialog_title">CPU Identity Spoofing</string>
     <string name="spoof_cpu_apply">Apply</string>
     <string name="spoof_cpu_cancel">Cancel</string>
@@ -533,11 +527,8 @@
     <string name="spoof_cpu_warning">Will affect CPU identification for all subsequent processes. Proceed with caution.</string>
     <!-- Zip File Type Labels -->
     <string name="zip_type_module"> (Module)</string>
-    <string name="zip_type_kernel"> (Kernel)</string>
     <string name="zip_file_unknown" translatable="false">unknown.zip</string>
     <!-- Zip Install Prompts -->
-    <string name="kernel_install_prompt_with_name">The following kernels will be installed: %1$s</string>
-    <string name="mixed_install_prompt_with_name">The following files will be installed: %1$s</string>
     <!-- SuSFS Configuration -->
     <string name="susfs_config_title">SuSFS Configuration</string>
     <string name="susfs_config_summary">Configure SuSFS module settings</string>
@@ -551,7 +542,6 @@
     <!-- SuSFS Reset Confirmation -->
     <string name="susfs_reset_confirm_title">Confirm Reset</string>
     <!-- SuSFS Toast Messages -->
-    <string name="susfs_binary_not_found">Cannot find ksu_susfs file</string>
     <string name="susfs_command_failed">SuSFS command execution failed</string>
     <!-- Auto Start -->
     <string name="susfs_autostart_title">Auto Start</string>
@@ -560,7 +550,6 @@
     <!-- SuSFS Tab Titles -->
     <string name="susfs_tab_basic_settings">Basic Settings</string>
     <string name="susfs_tab_sus_paths">SUS Paths</string>
-    <string name="susfs_tab_path_settings">Path Settings</string>
     <string name="susfs_tab_enabled_features">Enabled Features Status</string>
     <!-- SuSFS Path Management -->
     <string name="susfs_add_sus_path">Add SUS Path</string>
@@ -569,10 +558,7 @@
     <!-- SuSFS Reset Categories -->
     <string name="susfs_reset_paths_title">Reset SUS Paths</string>
     <string name="susfs_reset_paths_message">This will clear all SUS path configurations. Are you sure you want to continue?</string>
-    <string name="susfs_reset_path_title">Reset Path Settings</string>
     <!-- SuSFS Path Settings -->
-    <string name="susfs_android_data_path_label">Android Data Path</string>
-    <string name="susfs_sdcard_path_label">SD Card Path</string>
     <!-- SuSFS Enabled Features -->
     <string name="susfs_enabled_features_description">Display current SuSFS enabled features status</string>
     <string name="susfs_no_features_found">No feature status information found</string>
@@ -634,8 +620,6 @@
     <string name="susfs_backup_success">Backup created successfully: %s</string>
     <string name="susfs_backup_failed">Backup creation failed: %s</string>
     <string name="susfs_backup_file_not_found">Backup file not found</string>
-    <string name="susfs_backup_invalid_format">Invalid backup file format</string>
-    <string name="susfs_backup_version_mismatch">Backup version mismatch, but will attempt to restore</string>
     <string name="susfs_restore_title">Restore</string>
     <string name="susfs_restore_description">Restore SuSFS configurations from a backup file. This will overwrite all current settings</string>
     <string name="susfs_restore_select_file">Select Backup File</string>
@@ -721,6 +705,7 @@
     <string name="superuser_filter_system">System</string>
     <string name="superuser_granted_summary">%1$d of %2$d apps granted</string>
     <string name="module_summary">%1$d enabled · %2$d updatable</string>
+    <string name="home_preview_mode">No SukiSU kernel detected. Root access is available, so the pages open in preview mode; kernel features do nothing.</string>
     <string name="dynamic_manager_title">Dynamic managers</string>
     <string name="dynamic_manager_summary">Manage additional trusted KernelSU managers</string>
     <string name="dynamic_manager_enabled">Dynamic managers enabled</string>
@@ -731,4 +716,29 @@
     <string name="dynamic_manager_current">Current manager</string>
     <string name="dynamic_manager_default">Default manager</string>
     <string name="dynamic_manager_authorized">Authorized managers</string>
+    <!-- Extension subsystem -->
+    <string name="extension_section_title">Extension features</string>
+    <string name="extension_section_summary">Kernel extension features</string>
+    <string name="extension_status_supported">Supported</string>
+    <string name="extension_status_unsupported">The kernel does not support this extension</string>
+    <string name="extension_status_forced">Forced</string>
+    <string name="extension_status_managed">Module-managed</string>
+    <string name="extension_status_enabled">Enabled</string>
+    <string name="extension_status_disabled">Disabled</string>
+    <string name="extension_kpm_title">KPM (Kernel Patch Module)</string>
+    <string name="extension_kpm_summary">Load third-party .kpm modules at runtime. Requires a KPM-capable kernel build.</string>
+    <string name="extension_cpu_spoof_title">CPU identity spoofing</string>
+    <string name="extension_cpu_spoof_summary">Override reported MIDR, BogoMIPS, ELF hwcap and vDSO clock mode on the calling CPU. Subsequent reads of /proc/cpuinfo and uname() reflect the spoofed identity until the next spoof or reboot.</string>
+    <string name="extension_umount_paths_title">Umount path manager</string>
+    <string name="extension_umount_paths_summary">Manage the list of mount points the kernel will umount when an app starts.</string>
+    <string name="extension_dynamic_manager_title">Dynamic manager</string>
+    <string name="extension_dynamic_manager_summary">Allow more than one app to act as the KernelSU manager, authenticated by signing certificate.</string>
+    <string name="extension_susfs_title">SuSFS</string>
+    <string name="extension_susfs_summary">Configure hide-mount, spoof uname, redirect-open, kstat and other low-level kernel tricks. Requires the SuSFS kernel module to be installed.</string>
+    <string name="extension_open_details">Open details</string>
+
+    <!-- Empty state shown when no extension state has been observed
+         and the screen is not in the middle of a refresh. -->
+    <string name="extension_empty_title">No extension data</string>
+    <string name="extension_empty_subtitle">Pull to refresh, or check that the running kernel includes the extension hub.</string>
 </resources>

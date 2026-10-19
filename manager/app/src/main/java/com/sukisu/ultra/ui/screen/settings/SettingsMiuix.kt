@@ -20,7 +20,6 @@ import androidx.compose.material.icons.rounded.Adb
 import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.rounded.BugReport
-import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.DeveloperMode
@@ -29,10 +28,11 @@ import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.LayersClear
+import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.RestartAlt
+import androidx.compose.material.icons.rounded.Policy
 import androidx.compose.material.icons.rounded.Security
-import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.SystemUpdateAlt
 import androidx.compose.material.icons.rounded.VerifiedUser
@@ -78,8 +78,6 @@ fun SettingPagerMiuix(
     uiState: SettingsUiState,
     actions: SettingsScreenActions,
     bottomInnerPadding: Dp,
-    isKpmAvailable: Boolean,
-    isSusfsSupported: Boolean
 ) {
     val scrollBehavior = MiuixScrollBehavior()
     val enableBlur = LocalEnableBlur.current
@@ -245,14 +243,19 @@ fun SettingPagerMiuix(
                         Card(
                             modifier = Modifier.padding(top = 12.dp).fillMaxWidth()
                         ) {
-                            val title = stringResource(R.string.dynamic_manager_title)
+                            val extensionsTitle = stringResource(R.string.extension_section_title)
                             ArrowPreference(
-                                title = title,
-                                summary = stringResource(R.string.dynamic_manager_summary),
+                                title = extensionsTitle,
+                                summary = stringResource(R.string.extension_section_summary),
                                 startAction = {
-                                    Icon(Icons.Rounded.AdminPanelSettings, modifier = Modifier.padding(end = 6.dp), contentDescription = title, tint = colorScheme.onBackground)
+                                    Icon(
+                                        Icons.Rounded.Memory,
+                                        modifier = Modifier.padding(end = 6.dp),
+                                        contentDescription = extensionsTitle,
+                                        tint = colorScheme.onBackground
+                                    )
                                 },
-                                onClick = actions.onOpenDynamicManagers
+                                onClick = actions.onOpenExtensions
                             )
                         }
                         val toolsTitle = stringResource(id = R.string.settings_tools)
@@ -279,67 +282,18 @@ fun SettingPagerMiuix(
                         }
                     }
 
-                    if (isKpmAvailable) {
-                        Card(
-                            modifier = Modifier
-                                .padding(top = 12.dp)
-                                .fillMaxWidth(),
-                        ) {
-                            val kpmTitle = stringResource(id = R.string.kpm_title)
-                            ArrowPreference(
-                                title = kpmTitle,
-                                summary = stringResource(id = R.string.settings_kpm_summary),
-                                startAction = {
-                                    Icon(
-                                        Icons.Rounded.Code,
-                                        modifier = Modifier.padding(end = 6.dp),
-                                        contentDescription = kpmTitle,
-                                        tint = colorScheme.onBackground
-                                    )
-                                },
-                                onClick = {
-                                    actions.onOpenKpm()
-                                }
-                            )
-                        }
-                    }
-
                     KsuIsValid {
-                        if (isSusfsSupported) {
-                            Card(
-                                modifier = Modifier
-                                    .padding(top = 12.dp)
-                                    .fillMaxWidth(),
-                            ) {
-                                val susfsTitle = stringResource(id = R.string.susfs_config_title)
-                                ArrowPreference(
-                                    title = susfsTitle,
-                                    summary = stringResource(id = R.string.susfs_config_summary),
-                                    startAction = {
-                                        Icon(
-                                            Icons.Rounded.Settings,
-                                            modifier = Modifier.padding(end = 6.dp),
-                                            contentDescription = susfsTitle,
-                                            tint = colorScheme.onBackground
-                                        )
-                                    },
-                                    onClick = {
-                                        actions.onOpenSusfsConfig()
-                                    }
-                                )
-                            }
-                        }
+                        val suCompatModeItems = listOf(
+                            stringResource(id = R.string.settings_mode_enable_by_default),
+                            stringResource(id = R.string.settings_mode_disable_until_reboot),
+                            stringResource(id = R.string.settings_mode_disable_always),
+                        )
+
                         Card(
                             modifier = Modifier
                                 .padding(top = 12.dp)
                                 .fillMaxWidth(),
                         ) {
-                            val suCompatModeItems = listOf(
-                                stringResource(id = R.string.settings_mode_enable_by_default),
-                                stringResource(id = R.string.settings_mode_disable_until_reboot),
-                                stringResource(id = R.string.settings_mode_disable_always),
-                            )
-
                             val suSummary = when (uiState.suCompatStatus) {
                                 "unsupported" -> stringResource(id = R.string.feature_status_unsupported_summary)
                                 "managed" -> stringResource(id = R.string.feature_status_managed_summary)
@@ -405,6 +359,28 @@ fun SettingPagerMiuix(
                                 enabled = uiState.selinuxHideStatus == "supported",
                                 checked = uiState.isSelinuxHideEnabled,
                                 onCheckedChange = actions.onSetSelinuxHideEnabled
+                            )
+
+                            val mountHideSummary = when (uiState.mountHideStatus) {
+                                "unsupported" -> stringResource(id = R.string.feature_status_unsupported_summary)
+                                "managed" -> stringResource(id = R.string.feature_status_managed_summary)
+                                "forced" -> stringResource(id = R.string.feature_status_forced_summary)
+                                else -> stringResource(id = R.string.settings_mount_hide_summary)
+                            }
+                            SwitchPreference(
+                                title = stringResource(id = R.string.settings_mount_hide),
+                                summary = mountHideSummary,
+                                startAction = {
+                                    Icon(
+                                        Icons.Rounded.Policy,
+                                        modifier = Modifier.padding(end = 6.dp),
+                                        contentDescription = stringResource(id = R.string.settings_mount_hide),
+                                        tint = colorScheme.onBackground
+                                    )
+                                },
+                                enabled = uiState.mountHideStatus == "supported",
+                                checked = uiState.isMountHideEnabled,
+                                onCheckedChange = actions.onSetMountHideEnabled
                             )
 
                             val sulogSummary = when (uiState.sulogStatus) {

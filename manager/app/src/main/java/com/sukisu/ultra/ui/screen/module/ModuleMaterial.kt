@@ -143,6 +143,7 @@ import com.sukisu.ultra.ui.component.material.TonalCard
 import com.sukisu.ultra.ui.component.statustag.StatusTag
 import com.sukisu.ultra.ui.theme.LocalModuleDescriptionMaxLines
 import com.sukisu.ultra.ui.util.reboot
+import top.yukonga.miuix.kmp.nav.gesture.WindowNavigationEventBridge
 
 @SuppressLint("StringFormatInvalid")
 @Composable
@@ -579,6 +580,7 @@ private fun ModuleShortcutSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded))
     ) {
+        WindowNavigationEventBridge()
         Column(
             verticalArrangement = Arrangement.spacedBy(10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -726,7 +728,7 @@ private fun ModuleItem(
     val canOpenWebUi = module.hasWebUi && !module.remove && module.enabled
     val cardInteractionSource = remember { MutableInteractionSource() }
     val descriptionInteractionSource = remember { MutableInteractionSource() }
-    val banner = rememberModuleBanner(module.bannerPath)
+    val banner = rememberModuleBanner(module.id, module.bannerPath)
 
     TonalCard(
         modifier = Modifier.fillMaxWidth(),
@@ -778,7 +780,7 @@ private fun ModuleItem(
                     }
 
                     Text(
-                        text = "${module.version} · ${module.author}",
+                        text = "${module.version}, ${module.author}",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = FontFamily.Monospace,
@@ -857,6 +859,14 @@ private fun ModuleItem(
                             backgroundColor = MaterialTheme.colorScheme.tertiaryContainer
                         )
                     }
+                }
+                module.preinitWarning()?.let {
+                    StatusTag(
+                        stringResource(it),
+                        modifier = Modifier.padding(bottom = 4.dp),
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                        backgroundColor = MaterialTheme.colorScheme.errorContainer
+                    )
                 }
             }
 
