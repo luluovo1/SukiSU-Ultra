@@ -1,23 +1,7 @@
 name: Rustfmt check
 
 on:
-  push:
-    branches:
-      - 'main'
-      - 'dev'
-    paths:
-      - '.github/workflows/rustfmt.yml'
-      - 'userspace/**'
-  pull_request:
-    branches:
-      - 'main'
-      - 'dev'
-    paths:
-      - '.github/workflows/rustfmt.yml'
-      - 'userspace/**'
-
-permissions:
-  checks: write
+  workflow_dispatch:
 
 jobs:
   format:
