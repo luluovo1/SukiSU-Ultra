@@ -14,13 +14,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sukisu.ultra.R
+import com.sukisu.ultra.ui.component.miuix.AppCard
 import com.sukisu.ultra.ui.screen.susfs.component.miuix.BackupRestoreComponentMiuix
 import com.sukisu.ultra.ui.screen.susfs.component.miuix.DescriptionCardMiuix
 import com.sukisu.ultra.ui.screen.susfs.component.miuix.ResetButtonMiuix
 import com.sukisu.ultra.ui.util.isAbDevice
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
-import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 
@@ -32,19 +32,8 @@ fun BasicSettingsContentMiuix(
     onBuildTimeValueChange: (String) -> Unit,
     executeInPostFsData: Boolean,
     onExecuteInPostFsDataChange: (Boolean) -> Unit,
-    autoStartEnabled: Boolean,
-    canEnableAutoStart: Boolean,
     isLoading: Boolean,
-    onAutoStartToggle: (Boolean) -> Unit,
     onShowSlotInfo: () -> Unit,
-    enableHideBl: Boolean,
-    onEnableHideBlChange: (Boolean) -> Unit,
-    enableCleanupResidue: Boolean,
-    onEnableCleanupResidueChange: (Boolean) -> Unit,
-    enableAvcLogSpoofing: Boolean,
-    onEnableAvcLogSpoofingChange: (Boolean) -> Unit,
-    hideSusMountsForAllProcs: Boolean,
-    onHideSusMountsForAllProcsChange: (Boolean) -> Unit,
     cmdlineOrBootconfigPath: String = "",
     onCmdlineOrBootconfigApply: (String) -> Unit = {},
     onReset: (() -> Unit)? = null,
@@ -81,7 +70,7 @@ fun BasicSettingsContentMiuix(
         label = stringResource(R.string.susfs_uname_label),
         useLabelAsPlaceholder = true,
         modifier = Modifier
-            .padding(top = 12.dp)
+
             .fillMaxWidth(),
         enabled = !isLoading
     )
@@ -93,14 +82,14 @@ fun BasicSettingsContentMiuix(
         label = stringResource(R.string.susfs_build_time_label),
         useLabelAsPlaceholder = true,
         modifier = Modifier
-            .padding(top = 12.dp)
+
             .fillMaxWidth(),
         enabled = !isLoading
     )
 
-    Card(
+    AppCard(
         modifier = Modifier
-            .padding(top = 12.dp)
+
             .fillMaxWidth(),
     ) {
         OverlayDropdownPreference(
@@ -115,239 +104,25 @@ fun BasicSettingsContentMiuix(
             onSelectedIndexChange = { index ->
                 onExecuteInPostFsDataChange(index == 1)
             },
-            enabled = !isLoading,
-            startAction = {
-                Icon(
-                    Icons.Default.LocationOn,
-                    contentDescription = null,
-                    tint = colorScheme.primary,
-                    modifier = Modifier.padding(end = 16.dp)
-                )
-            }
+            enabled = !isLoading
         )
     }
 
     // 当前值显示
-    Card(
-        modifier = Modifier
-            .padding(top = 12.dp)
-            .fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.susfs_current_value, unameValue),
-                style = MiuixTheme.textStyles.body2.copy(fontSize = 13.sp),
-                color = colorScheme.onSurfaceVariantSummary
-            )
-            Text(
-                text = stringResource(R.string.susfs_current_build_time, buildTimeValue),
-                style = MiuixTheme.textStyles.body2.copy(fontSize = 13.sp),
-                color = colorScheme.onSurfaceVariantSummary
-            )
-            Text(
-                text = stringResource(R.string.susfs_current_execution_location, if (executeInPostFsData) "Post-FS-Data" else "Service"),
-                style = MiuixTheme.textStyles.body2.copy(fontSize = 13.sp),
-                color = colorScheme.onSurfaceVariantSummary
-            )
-        }
-    }
-
-    // 应用按钮
     if (onApply != null) {
-        Card(
-            modifier = Modifier
-                .padding(top = 12.dp)
-                .fillMaxWidth(),
-        ) {
-            Button(
-                onClick = { onApply() },
-                enabled = !isLoading && (unameValue.isNotBlank() || buildTimeValue.isNotBlank()),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp),
-                cornerRadius = 8.dp
-            ) {
-                Text(
-                    text = stringResource(R.string.susfs_apply)
-                )
-            }
-        }
-    }
-
-    // Cmdline / Bootconfig 卡片。
-    Card(
-        modifier = Modifier
-            .padding(top = 12.dp)
-            .fillMaxWidth(),
-    ) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Default.Code,
-                    contentDescription = null,
-                    tint = colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.susfs_cmdline_or_bootconfig_title),
-                    style = MiuixTheme.textStyles.title3,
-                    fontWeight = FontWeight.Medium,
-                    color = colorScheme.primary
-                )
-            }
-            Text(
-                text = stringResource(R.string.susfs_cmdline_or_bootconfig_description),
-                fontSize = 13.sp,
-                color = colorScheme.onSurfaceVariantSummary,
-                lineHeight = 16.sp
-            )
-            Card(
-                colors = CardDefaults.defaultColors(
-                    color = colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                )
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = stringResource(
-                            R.string.susfs_cmdline_or_bootconfig_current,
-                            cmdlineOrBootconfigPath.ifBlank {
-                                stringResource(R.string.susfs_cmdline_or_bootconfig_none)
-                            }
-                        ),
-                        fontSize = 13.sp,
-                        color = colorScheme.onSurfaceVariantSummary
-                    )
-                }
-            }
-            Button(
-                onClick = {
-                    cmdlineFileLauncher.launch(arrayOf("text/plain", "application/octet-stream", "*/*"))
-                },
-                enabled = !isLoading,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp)
-                    .padding(vertical = 4.dp),
-                cornerRadius = 8.dp
-            ) {
-                Text(stringResource(R.string.susfs_cmdline_or_bootconfig_pick_file))
-            }
-        }
-    }
-
-    Card(
-        modifier = Modifier
-            .padding(top = 12.dp)
-            .fillMaxWidth(),
-    ) {
-        // 开机自启动开关
-        SwitchPreference(
-            title = stringResource(R.string.susfs_autostart_title),
-            summary = if (canEnableAutoStart) {
-                stringResource(R.string.susfs_autostart_description)
-            } else {
-                stringResource(R.string.susfs_autostart_requirement)
-            },
-            startAction = {
-                Icon(
-                    Icons.Default.AutoMode,
-                    modifier = Modifier.padding(end = 16.dp),
-                    contentDescription = stringResource(R.string.susfs_autostart_title),
-                    tint = if (canEnableAutoStart) colorScheme.onBackground else colorScheme.onSurfaceVariantSummary
-                )
-            },
-            checked = autoStartEnabled,
-            onCheckedChange = onAutoStartToggle,
-            enabled = !isLoading && canEnableAutoStart
-        )
-
-        // 隐藏BL脚本开关
-        SwitchPreference(
-            title = stringResource(R.string.hide_bl_script),
-            summary = stringResource(R.string.hide_bl_script_description),
-            startAction = {
-                Icon(
-                    Icons.Default.Security,
-                    modifier = Modifier.padding(end = 16.dp),
-                    contentDescription = stringResource(R.string.hide_bl_script),
-                    tint = colorScheme.onBackground
-                )
-            },
-            checked = enableHideBl,
-            onCheckedChange = onEnableHideBlChange,
-            enabled = !isLoading
-        )
-
-        // 清理残留脚本开关
-        SwitchPreference(
-            title = stringResource(R.string.cleanup_residue),
-            summary = stringResource(R.string.cleanup_residue_description),
-            startAction = {
-                Icon(
-                    Icons.Default.CleaningServices,
-                    modifier = Modifier.padding(end = 16.dp),
-                    contentDescription = stringResource(R.string.cleanup_residue),
-                    tint = colorScheme.onBackground
-                )
-            },
-            checked = enableCleanupResidue,
-            onCheckedChange = onEnableCleanupResidueChange,
-            enabled = !isLoading
-        )
-
-        // AVC日志欺骗开关
-        SwitchPreference(
-            title = stringResource(R.string.avc_log_spoofing),
-            summary = stringResource(R.string.avc_log_spoofing_description),
-            startAction = {
-                Icon(
-                    Icons.Default.VisibilityOff,
-                    modifier = Modifier.padding(end = 16.dp),
-                    contentDescription = stringResource(R.string.avc_log_spoofing),
-                    tint = colorScheme.onBackground
-                )
-            },
-            checked = enableAvcLogSpoofing,
-            onCheckedChange = onEnableAvcLogSpoofingChange,
-            enabled = !isLoading
-        )
-
-        // 对所有进程隐藏SuS挂载开关
-        SwitchPreference(
-            title = stringResource(R.string.susfs_hide_mounts_for_all_procs_label),
-            summary = if (hideSusMountsForAllProcs) {
-                stringResource(R.string.susfs_hide_mounts_for_all_procs_enabled_description)
-            } else {
-                stringResource(R.string.susfs_hide_mounts_for_all_procs_disabled_description)
-            },
-            startAction = {
-                Icon(
-                    if (hideSusMountsForAllProcs) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                    modifier = Modifier.padding(end = 16.dp),
-                    contentDescription = stringResource(R.string.susfs_hide_mounts_for_all_procs_label),
-                    tint = colorScheme.onBackground
-                )
-            },
-            checked = hideSusMountsForAllProcs,
-            onCheckedChange = onHideSusMountsForAllProcsChange,
-            enabled = !isLoading
+        TextButton(
+            text = stringResource(R.string.susfs_apply),
+            onClick = onApply,
+            enabled = !isLoading && (unameValue.isNotBlank() || buildTimeValue.isNotBlank()),
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.textButtonColorsPrimary(),
         )
     }
 
-    // 槽位信息按钮
     if (isAbDevice) {
-        Card(
+        AppCard(
             modifier = Modifier
-                .padding(top = 12.dp)
+
                 .fillMaxWidth(),
         ) {
             Column(
@@ -394,6 +169,68 @@ fun BasicSettingsContentMiuix(
         }
     }
 
+    // Cmdline / Bootconfig 卡片
+    AppCard(
+        modifier = Modifier
+
+            .fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = stringResource(R.string.susfs_cmdline_or_bootconfig_title),
+                    style = MiuixTheme.textStyles.title3,
+                    fontWeight = FontWeight.Medium,
+                    color = colorScheme.primary
+                )
+            }
+            Text(
+                text = stringResource(R.string.susfs_cmdline_or_bootconfig_description),
+                fontSize = 13.sp,
+                color = colorScheme.onSurfaceVariantSummary,
+                lineHeight = 16.sp
+            )
+            AppCard(
+                colors = CardDefaults.defaultColors(
+                    color = colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(
+                            R.string.susfs_cmdline_or_bootconfig_current,
+                            cmdlineOrBootconfigPath.ifBlank {
+                                stringResource(R.string.susfs_cmdline_or_bootconfig_none)
+                            }
+                        ),
+                        fontSize = 13.sp,
+                        color = colorScheme.onSurfaceVariantSummary
+                    )
+                }
+            }
+            Button(
+                onClick = {
+                    cmdlineFileLauncher.launch(arrayOf("text/plain", "application/octet-stream", "*/*"))
+                },
+                enabled = !isLoading,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .padding(vertical = 4.dp),
+                cornerRadius = 8.dp
+            ) {
+                Text(stringResource(R.string.susfs_cmdline_or_bootconfig_pick_file))
+            }
+        }
+    }
+
+
+
     BackupRestoreComponentMiuix(
         isLoading = isLoading,
         onLoadingChange = { },
@@ -404,7 +241,8 @@ fun BasicSettingsContentMiuix(
     if (onReset != null) {
         ResetButtonMiuix(
             title = stringResource(R.string.susfs_reset_confirm_title),
-            onClick = onReset
+            onClick = onReset,
+            enabled = !isLoading
         )
     }
 }

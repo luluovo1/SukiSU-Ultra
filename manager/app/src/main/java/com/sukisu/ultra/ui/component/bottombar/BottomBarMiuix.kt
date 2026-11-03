@@ -1,6 +1,5 @@
 package com.sukisu.ultra.ui.component.bottombar
 
-import androidx.annotation.StringRes
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -17,18 +16,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sukisu.ultra.Natives
-import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.LocalMainPagerState
 import com.sukisu.ultra.ui.component.FloatingBottomBar
 import com.sukisu.ultra.ui.component.FloatingBottomBarItem
 import com.sukisu.ultra.ui.theme.LocalEnableFloatingBottomBar
 import com.sukisu.ultra.ui.theme.LocalEnableFloatingBottomBarBlur
+import com.sukisu.ultra.ui.theme.backgroundAwareColor
 import com.sukisu.ultra.ui.util.BlurredBar
+import com.sukisu.ultra.ui.util.CustomTextKey
+import com.sukisu.ultra.ui.util.customText
 import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.BadgedBox
 import top.yukonga.miuix.kmp.basic.Icon
@@ -56,7 +56,7 @@ fun BottomBarMiuix(
 
     val items = BottomBarDestination.entries.map { destination ->
         NavigationItem(
-            label = stringResource(destination.label),
+            label = customText(destination.textKey),
             icon = destination.icon,
         )
     }
@@ -64,7 +64,7 @@ fun BottomBarMiuix(
         BlurredBar(blurBackdrop) {
             NavigationBar(
                 modifier = modifier,
-                color = if (blurBackdrop != null) Color.Transparent else MiuixTheme.colorScheme.surface,
+                color = if (blurBackdrop != null) Color.Transparent else backgroundAwareColor(MiuixTheme.colorScheme.surface),
                 content = {
                     items.forEachIndexed { index, item ->
                         NavigationBarItem(
@@ -124,7 +124,7 @@ fun BottomBarMiuix(
                         lineHeight = 14.sp,
                         maxLines = 1,
                         softWrap = false,
-                        overflow = TextOverflow.Visible
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -133,13 +133,13 @@ fun BottomBarMiuix(
 }
 
 enum class BottomBarDestination(
-    @get:StringRes val label: Int,
+    val textKey: CustomTextKey,
     val icon: ImageVector,
 ) {
-    Home(R.string.home, Icons.Rounded.Cottage),
-    SuperUser(R.string.superuser, Icons.Rounded.Security),
-    Module(R.string.module, Icons.Rounded.Extension),
-    Setting(R.string.settings, Icons.Rounded.Settings)
+    Home(CustomTextKey.PAGE_HOME, Icons.Rounded.Cottage),
+    SuperUser(CustomTextKey.PAGE_SUPERUSER, Icons.Rounded.Security),
+    Module(CustomTextKey.PAGE_MODULES, Icons.Rounded.Extension),
+    Setting(CustomTextKey.PAGE_SETTINGS, Icons.Rounded.Settings)
 }
 
 internal fun navigationBadgeFor(

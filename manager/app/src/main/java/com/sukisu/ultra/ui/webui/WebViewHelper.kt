@@ -5,6 +5,7 @@ import android.app.Activity
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
@@ -18,13 +19,17 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.WebViewAssetLoader
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import com.sukisu.ultra.R
+import com.sukisu.ultra.data.model.AppInfo
 import com.sukisu.ultra.data.repository.ModuleRepositoryImpl
 import com.sukisu.ultra.ui.util.AppIconCache
 import com.sukisu.ultra.ui.util.createRootShell
 import com.sukisu.ultra.ui.util.withMainUserUid
 import com.sukisu.ultra.ui.viewmodel.SuperUserViewModel
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 
 /**
@@ -46,6 +51,19 @@ internal fun Activity.nextRestartIntent(): Intent {
 }
 
 internal const val EXTRA_RENDERER_RESTARTS = "webui_renderer_restarts"
+
+private const val WEB_DOMAIN = "mui.kernelsu.org"
+private const val KSU_SCHEME = "ksu"
+private const val ICON_HOST = "icon"
+private const val INTERNAL_BLOB_DOWNLOAD_HOST = "blob-download.kernelsu.internal"
+
+private fun loadDownloadJs(context: Context): String {
+    return context.assets.open("webview/download.js").bufferedReader(Charsets.UTF_8).use { it.readText() }
+}
+
+internal fun webUIApps(): List<AppInfo> = runBlocking {
+    SuperUserViewModel.loadApps(useCache = true).getOrNull()?.first.orEmpty()
+}
 
 fun Activity.setTaskDescription(label: String) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
@@ -87,9 +105,6 @@ internal suspend fun prepareWebView(
         webUIState.moduleName = moduleInfo.name
         webUIState.modDir = "/data/adb/modules/${moduleId}"
 
-        if (SuperUserViewModel.apps.isEmpty()) {
-            SuperUserViewModel().fetchAppList()
-        }
         val shell = createRootShell(true)
         webUIState.rootShell = shell
 
@@ -125,32 +140,40 @@ internal suspend fun prepareWebView(
             }
 
             val webViewAssetLoader = WebViewAssetLoader.Builder()
-                .setDomain("mui.kernelsu.org")
+                .setDomain(WEB_DOMAIN)
                 .addPathHandler("/", assetHandler)
                 .build()
 
             // WebViewClient
             webView.webViewClient = object : WebViewClient() {
+                override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                    webUIState.onPageStarted(view)
+                    super.onPageStarted(view, url, favicon)
+                }
+
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                     val url = request.url
-                    if (url.scheme.equals("ksu", ignoreCase = true) && url.host.equals("icon", ignoreCase = true)) {
+
+                    BlobDownloadHandler.shouldInterceptRequest(request)?.let { return it }
+
+                    if (url.scheme.equals(KSU_SCHEME, ignoreCase = true) && url.host.equals(ICON_HOST, ignoreCase = true)) {
                         val packageName = url.path?.substring(1)
                         if (!packageName.isNullOrEmpty()) {
-                            val appInfo = SuperUserViewModel.apps
+                            val appInfo = webUIApps()
                                 .find { it.packageName == packageName }
                                 ?.packageInfo?.applicationInfo
                             if (appInfo != null) {
                                 val icon = AppIconCache.loadIconSync(activity, appInfo.withMainUserUid(activity), 512)
-                                val stream = java.io.ByteArrayOutputStream()
-                                icon.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)
+                                val stream = ByteArrayOutputStream()
+                                icon.compress(Bitmap.CompressFormat.PNG, 100, stream)
                                 return WebResourceResponse(
                                     "image/png", null, 200, "OK",
                                     mapOf("Access-Control-Allow-Origin" to "*"),
-                                    java.io.ByteArrayInputStream(stream.toByteArray())
+                                    ByteArrayInputStream(stream.toByteArray())
                                 )
                             } else {
                                 val errorMsg = "No such package"
-                                val errorStream = java.io.ByteArrayInputStream(errorMsg.toByteArray(Charsets.UTF_8))
+                                val errorStream = ByteArrayInputStream(errorMsg.toByteArray(Charsets.UTF_8))
                                 return WebResourceResponse(
                                     "text/plain",
                                     "utf-8",
@@ -168,6 +191,7 @@ internal suspend fun prepareWebView(
                 override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
                     webUIState.webCanGoBack = view?.canGoBack() ?: false
                     if (webUIState.isInsetsEnabled) webUIState.webView?.evaluateJavascript(webUIState.currentInsets.js, null)
+                    view?.evaluateJavascript(loadDownloadJs(activity), null)
                     super.doUpdateVisitedHistory(view, url, isReload)
                 }
 
@@ -266,8 +290,18 @@ internal suspend fun prepareWebView(
 
             // JS Interface
             val webviewInterface = WebViewInterface(webUIState)
+            val downloadInterface = WebUIDownloadInterface(webUIState)
+            webUIState.webViewInterface = webviewInterface
+            webUIState.downloadInterface = downloadInterface
             webUIState.webView = webView
             webView.addJavascriptInterface(webviewInterface, "ksu")
+            webView.addJavascriptInterface(downloadInterface, "ksu_download")
+            webView.setDownloadListener { url, _, _, _, _ ->
+                if (Uri.parse(url).host != INTERNAL_BLOB_DOWNLOAD_HOST) {
+                    downloadInterface.openExternal(url)
+                }
+            }
+            webView.evaluateJavascript(loadDownloadJs(activity), null)
             webUIState.uiEvent = WebUIEvent.WebViewReady
         }
     }

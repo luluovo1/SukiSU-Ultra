@@ -25,7 +25,6 @@ import com.sukisu.ultra.ui.LocalUiMode
 import com.sukisu.ultra.ui.UiMode
 import com.sukisu.ultra.ui.component.choosekmidialog.ChooseKmiDialog
 import com.sukisu.ultra.ui.kernelFlash.KpmPatchOption
-import com.sukisu.ultra.ui.kernelFlash.KpmPatchSelectionDialog
 import com.sukisu.ultra.ui.kernelFlash.component.SlotSelectionDialog
 import com.sukisu.ultra.ui.component.dialog.rememberLoadingDialog
 import com.sukisu.ultra.ui.kernelFlash.rememberAnyKernel3State
@@ -63,7 +62,8 @@ fun InstallScreen(
     var probeJob by remember { mutableStateOf<Job?>(null) }
     val loadingDialog = rememberLoadingDialog()
 
-    var installMethod by rememberSaveable { mutableStateOf<InstallMethod?>(null) }
+    val installMethodState = rememberSaveable { mutableStateOf<InstallMethod?>(null) }
+    var installMethod by installMethodState
     var downloadDialogShown by rememberSaveable { mutableStateOf(false) }
     var remotePartitions by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var remotePartitionSelectionIndex by rememberSaveable { mutableIntStateOf(0) }
@@ -75,6 +75,13 @@ fun InstallScreen(
     var allowShell by rememberSaveable { mutableStateOf(false) }
     var enableAdb by rememberSaveable { mutableStateOf(false) }
     var forceBackup by rememberSaveable { mutableStateOf(false) }
+    var kpmPatchOption by rememberSaveable { mutableStateOf(KpmPatchOption.FOLLOW_KERNEL) }
+    val kpmEnabled = kpmPatchOption.enabled
+    val kpmUndo = kpmPatchOption.undo
+    val canPatchKpm = android.os.Build.SUPPORTED_ABIS.contains("arm64-v8a")
+    val isStandaloneKpm = installMethod == null && canPatchKpm && kpmEnabled
+    var kpmBootExpanded by rememberSaveable { mutableStateOf(false) }
+    var kpmBootUri by rememberSaveable { mutableStateOf<Uri?>(null) }
     var blockModulesEnabled by rememberSaveable { mutableStateOf(false) }
     var blockModules by rememberSaveable { mutableStateOf("") }
     var blockModulesPrefilled by rememberSaveable { mutableStateOf(false) }
@@ -137,9 +144,7 @@ fun InstallScreen(
         }
     }
 
-    val installMethodState = remember { mutableStateOf<InstallMethod?>(null) }
-
-    // AnyKernel3 状态
+    // AnyKernel3 状�?
     val anyKernel3State = rememberAnyKernel3State(
         installMethodState = installMethodState,
         preselectedKernelUri = preselectedKernelUri?.toString(),
@@ -147,34 +152,15 @@ fun InstallScreen(
         isAbDevice = isAbDevice
     )
 
-    // 同步 installMethod 和 anyKernel3State
-    LaunchedEffect(installMethod) {
-        installMethodState.value = installMethod
-    }
-
-    val kpmPatchOption = anyKernel3State.kpmPatchOption
     val showSlotSelectionDialog = anyKernel3State.showSlotSelectionDialog && isAbDevice
-    val showKpmPatchDialog = anyKernel3State.showKpmPatchDialog
 
-    // 槽位选择对话框
+    // 槽位选择对话�?
     if (showSlotSelectionDialog) {
         SlotSelectionDialog(
             show = true,
             onDismiss = { anyKernel3State.onDismissSlotDialog() },
             onSlotSelected = { slot ->
                 anyKernel3State.onSlotSelected(slot)
-            }
-        )
-    }
-
-    // KPM补丁选择对话框
-    if (showKpmPatchDialog) {
-        KpmPatchSelectionDialog(
-            show = true,
-            currentOption = kpmPatchOption,
-            onDismiss = { anyKernel3State.onDismissPatchDialog() },
-            onOptionSelected = { option ->
-                anyKernel3State.onOptionSelected(option)
             }
         )
     }
@@ -213,9 +199,15 @@ fun InstallScreen(
 
     val blockModulesInvalidMessage = stringResource(R.string.install_block_modules_invalid)
     val onInstall = {
-        if (!isBlockModulesValid(effectiveBlockModules)) {
+        if (isStandaloneKpm) {
+            navigator.push(Route.Flash(FlashIt.PatchKpmBoot(boot = kpmBootUri, undo = kpmUndo)))
+        } else if (!isBlockModulesValid(effectiveBlockModules)) {
             showMessage(blockModulesInvalidMessage)
         } else installMethod?.let { method ->
+            if (kpmEnabled && method is InstallMethod.DirectInstallToInactiveSlot) {
+                showMessage(resources.getString(R.string.install_kpm_inactive_unsupported))
+                return@let
+            }
             when (method) {
                 is InstallMethod.HorizonKernel -> {
                     method.uri?.let { uri ->
@@ -237,6 +229,9 @@ fun InstallScreen(
                                 is InstallMethod.DownloadFile -> FlashIt.DownloadBoot(
                                     url = method.url ?: return@let,
                                     partition = method.partition ?: return@let,
+                                    kpmEnabled = kpmEnabled,
+                                    kpmUndo = kpmUndo,
+                                    kpmBoot = kpmBootUri,
                                     lkm = lkmSelection,
                                     allowShell = allowShell,
                                     enableAdb = enableAdb,
@@ -247,6 +242,9 @@ fun InstallScreen(
                                 )
                                 else -> FlashIt.FlashBoot(
                                     boot = if (method is InstallMethod.SelectFile) method.uri else null,
+                                    kpmEnabled = kpmEnabled,
+                                    kpmUndo = kpmUndo,
+                                    kpmBoot = kpmBootUri,
                                     lkm = lkmSelection,
                                     ota = isOta,
                                     partition = partitions.getOrNull(partitionSelectionIndex),
@@ -328,20 +326,31 @@ fun InstallScreen(
     val selectImageLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) {
-        if (it.resultCode == Activity.RESULT_OK) {
-            it.data?.data?.let { uri ->
-                val option = when (installMethod) {
-                    is InstallMethod.SelectFile -> InstallMethod.SelectFile(uri, summary = selectFileTip)
-                    is InstallMethod.HorizonKernel -> InstallMethod.HorizonKernel(uri, summary = horizonKernelSummary)
-                    else -> null
-                }
-                option?.let { opt ->
-                    installMethod = opt
-                    // 对于 HorizonKernel，需要触发 AnyKernel3 流程（槽位选择和KPM修补）
-                    if (opt is InstallMethod.HorizonKernel) {
-                        anyKernel3State.onHorizonKernelSelected(opt)
-                    }
-                }
+        val uri = it.data?.data
+        if (it.resultCode != Activity.RESULT_OK || uri == null) {
+            installMethod = null
+            return@rememberLauncherForActivityResult
+        }
+        val option = when (installMethod) {
+            is InstallMethod.SelectFile -> InstallMethod.SelectFile(uri, summary = selectFileTip)
+            is InstallMethod.HorizonKernel -> InstallMethod.HorizonKernel(uri, summary = horizonKernelSummary)
+            else -> null
+        }
+        option?.let { opt ->
+            installMethod = opt
+            // 对于 HorizonKernel，需要触�?AnyKernel3 流程（槽位选择和KPM修补�?
+            if (opt is InstallMethod.HorizonKernel) {
+                anyKernel3State.onHorizonKernelSelected(opt)
+            }
+        }
+    }
+
+    val selectKpmBootLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            result.data?.data?.let { uri ->
+                kpmBootUri = uri
             }
         }
     }
@@ -364,10 +373,10 @@ fun InstallScreen(
         enableAdb = enableAdb,
         forceBackup = forceBackup,
         canForceBackup = installMethod is InstallMethod.SelectFile,
-        anyKernel3State = anyKernel3State,
         kpmPatchOption = kpmPatchOption,
-        showSlotSelectionDialog = showSlotSelectionDialog,
-        showKpmPatchDialog = showKpmPatchDialog,
+        kpmBootExpanded = kpmBootExpanded,
+        kpmBootUri = kpmBootUri,
+        canPatchKpm = canPatchKpm,
         blockModulesEnabled = blockModulesEnabled,
         blockModules = blockModules,
         blockModulesValid = isBlockModulesValid(effectiveBlockModules),
@@ -386,7 +395,7 @@ fun InstallScreen(
         },
         onDownloadFile = { downloadDialogShown = true },
         onSelectBootImage = { method ->
-            // 在打开文件选择器之前，先设置 installMethod
+            // 在打开文件选择器之前，先设�?installMethod
             installMethod = method
             selectImageLauncher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
                 type = "application/*"
@@ -417,7 +426,7 @@ fun InstallScreen(
                 is InstallMethod.SelectFile -> true
                 else -> isKmiUnknown
             }
-            if (isGkiDevice && !isLkmSelected && isKmiUnresolved && installMethod !is InstallMethod.HorizonKernel) {
+            if (!isStandaloneKpm && isGkiDevice && !isLkmSelected && isKmiUnresolved && installMethod !is InstallMethod.HorizonKernel) {
                 showChooseKmiDialog.value = true
             } else {
                 onInstall()
@@ -426,6 +435,15 @@ fun InstallScreen(
         onAdvancedOptionsClicked = {
             advancedOptionsShown = !advancedOptionsShown
         },
+        onPatchKpmFile = {
+            selectKpmBootLauncher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
+                type = "*/*"
+                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/octet-stream", "application/x-boot-img"))
+            })
+        },
+        onKpmOptionChange = { kpmPatchOption = it },
+        onToggleKpmBoot = { kpmBootExpanded = !kpmBootExpanded },
+        onClearKpmBoot = { kpmBootUri = null },
         onSelectAllowShell = {
             allowShell = it
         },
@@ -438,7 +456,7 @@ fun InstallScreen(
         onSpoofEnabledChange = {
             spoofEnabled = it
             if (!it) {
-                // 关闭开关时清空已填写的值
+                // 关闭开关时清空已填写的�?
                 spoofRelease = ""
                 spoofVersion = ""
                 scope.launch {
@@ -464,9 +482,6 @@ fun InstallScreen(
         },
         onReopenSlotDialog = { method ->
             anyKernel3State.onReopenSlotDialog(method)
-        },
-        onReopenKpmDialog = { method ->
-            anyKernel3State.onReopenKpmDialog(method)
         },
         onSelectBlockModules = {
             blockModulesEnabled = it

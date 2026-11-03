@@ -10,6 +10,7 @@ import com.sukisu.ultra.data.repository.SettingsRepository
 import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
 import com.sukisu.ultra.ui.LocalUiMode
 import com.sukisu.ultra.ui.UiMode
+import top.yukonga.miuix.kmp.blur.LayerBackdrop
 
 enum class ColorMode(val value: Int) {
     SYSTEM(0),
@@ -132,6 +133,9 @@ fun isInDarkTheme(): Boolean {
 
 val LocalColorMode = staticCompositionLocalOf { 0 }
 
+/** Reactively provided by MainActivity so nested Material pages follow the current appearance. */
+val LocalAppSettings = staticCompositionLocalOf<AppSettings?> { null }
+
 val LocalEnableBlur = staticCompositionLocalOf { false }
 
 val LocalEnableFloatingBottomBar = staticCompositionLocalOf { false }
@@ -141,3 +145,47 @@ val LocalEnableFloatingBottomBarBlur = staticCompositionLocalOf { false }
 val LocalEnableNavigationBadge = staticCompositionLocalOf { true }
 
 val LocalModuleDescriptionMaxLines = staticCompositionLocalOf { 4 }
+
+val LocalBackgroundImagePath = staticCompositionLocalOf { "" }
+
+/**
+ * Captures the app background image (and its scrim) exactly as drawn behind the navigation host.
+ *
+ * `layerBackdrop` only records the page it is attached to, so over a custom background the
+ * unpainted parts of that layer are fully transparent. Miuix bar blurs sample that layer, and
+ * transparent pixels bleed black into the result, so bars combine this backdrop underneath their
+ * own page backdrop to blur what is actually on screen. Null when no capture is available.
+ */
+val LocalAppBackgroundBackdrop = staticCompositionLocalOf<LayerBackdrop?> { null }
+
+val LocalCardBackgroundAlpha = staticCompositionLocalOf { 0.6f }
+
+@Composable
+fun backgroundAwareCardColors(
+    color: androidx.compose.ui.graphics.Color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.surfaceContainer,
+    contentColor: androidx.compose.ui.graphics.Color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceContainer,
+    backgroundAlpha: Float = LocalCardBackgroundAlpha.current,
+): top.yukonga.miuix.kmp.basic.CardColors {
+    val adjusted = if (LocalBackgroundImagePath.current.isNotEmpty()) {
+        color.copy(alpha = backgroundAlpha)
+    } else {
+        color
+    }
+    return top.yukonga.miuix.kmp.basic.CardDefaults.defaultColors(
+        color = adjusted,
+        contentColor = contentColor,
+    )
+}
+
+@Composable
+fun backgroundAwareColor(
+    color: androidx.compose.ui.graphics.Color,
+    backgroundAlpha: Float = LocalCardBackgroundAlpha.current,
+): androidx.compose.ui.graphics.Color {
+    return if (LocalBackgroundImagePath.current.isNotEmpty()) {
+        color.copy(alpha = backgroundAlpha)
+    } else {
+        color
+    }
+}
+

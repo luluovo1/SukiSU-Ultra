@@ -1,5 +1,6 @@
 package com.sukisu.ultra.ui.screen.appprofile
 
+import com.sukisu.ultra.ui.component.profile.TemporaryRootControls
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
@@ -56,6 +57,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import com.sukisu.ultra.ui.util.customText
+import com.sukisu.ultra.ui.util.CustomTextKey
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -144,6 +147,10 @@ fun AppProfileScreenMaterial(
             onViewTemplate = actions.onViewTemplate,
             onManageTemplate = actions.onManageTemplate,
             onProfileChange = actions.onProfileChange,
+            onPermanentRootChange = actions.onPermanentRootChange,
+            temporaryRoot = state.temporaryRoot,
+            onTemporaryRootChange = actions.onTemporaryRootChange,
+            onTemporaryRootGrant = actions.onTemporaryRootGrant,
         )
     }
 }
@@ -159,6 +166,10 @@ private fun AppProfileInner(
     appVersionName: String,
     appVersionCode: Long,
     profile: Natives.Profile,
+    onPermanentRootChange: (Boolean) -> Unit = {},
+    temporaryRoot: Boolean = false,
+    onTemporaryRootChange: (Boolean) -> Unit = {},
+    onTemporaryRootGrant: (Long?) -> Unit = {},
     isUidGroup: Boolean = false,
     isSpecialApp: Boolean = false,
     affectedApps: List<SuperUserViewModel.AppInfo> = emptyList(),
@@ -256,8 +267,17 @@ private fun AppProfileInner(
         } else {
             RootSwitchCard(
                 checked = isRootGranted,
-                summary = mode.text,
-                onCheckedChange = { onProfileChange(profile.copy(allowSu = it)) },
+                summary = if (isRootGranted && temporaryRoot) stringResource(R.string.temporary_root_active) else mode.text,
+                onCheckedChange = onPermanentRootChange,
+            )
+        }
+
+        if (!isSpecialApp) {
+            TemporaryRootControls(
+                enabled = temporaryRoot,
+                granted = isRootGranted,
+                onEnabledChange = onTemporaryRootChange,
+                onChoose = onTemporaryRootGrant,
             )
         }
 
@@ -414,7 +434,7 @@ private fun TopBar(
 ) {
     val haptic = LocalHapticFeedback.current
     LargeFlexibleTopAppBar(
-        title = { Text(stringResource(R.string.profile)) },
+        title = { Text(customText(CustomTextKey.PAGE_APP_PROFILE)) },
         navigationIcon = {
             TopBarBackButton(onClick = onBack)
         },

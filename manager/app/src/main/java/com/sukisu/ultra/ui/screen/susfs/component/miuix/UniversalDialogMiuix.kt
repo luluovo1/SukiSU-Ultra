@@ -16,13 +16,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sukisu.ultra.R
+import com.sukisu.ultra.ui.component.miuix.AppCard
 import top.yukonga.miuix.kmp.basic.Button
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.window.WindowDialog
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
@@ -71,7 +71,7 @@ fun UniversalDialogMiuix(
     }
 
     if (showDialogState.value) {
-        OverlayDialog(
+        WindowDialog(
             show = showDialogState.value,
             title = stringResource(titleRes),
             onDismissRequest = {
@@ -131,8 +131,6 @@ fun UniversalDialogMiuix(
                             modifier = Modifier
                                 .weight(1f)
                                 .heightIn(min = 48.dp)
-                                .padding(vertical = 8.dp),
-                            cornerRadius = 8.dp
                         ) {
                             Text(
                                 text = stringResource(cancelTextRes)
@@ -149,8 +147,6 @@ fun UniversalDialogMiuix(
                             modifier = Modifier
                                 .weight(1f)
                                 .heightIn(min = 48.dp)
-                                .padding(vertical = 8.dp),
-                            cornerRadius = 8.dp
                         ) {
                             Text(
                                 text = stringResource(confirmTextRes)
@@ -171,7 +167,7 @@ fun DescriptionCardMiuix(
     warning: String? = null,
     additionalInfo: String? = null
 ) {
-    Card(
+    AppCard(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.defaultColors(
             color = colorScheme.surfaceVariant.copy(alpha = 0.3f)
@@ -252,7 +248,7 @@ fun EmptyStateCardMiuix(
     message: String,
     modifier: Modifier = Modifier
 ) {
-    Card(
+    AppCard(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.defaultColors(
             color = colorScheme.surfaceVariant.copy(alpha = 0.15f)
@@ -282,7 +278,7 @@ fun SectionHeaderMiuix(
     icon: ImageVector,
     count: Int
 ) {
-    Card(
+    AppCard(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.defaultColors(
             color = colorScheme.surfaceVariant.copy(alpha = 0.25f)

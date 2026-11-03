@@ -1,5 +1,8 @@
 package com.sukisu.ultra.ui.screen.appprofile
 
+import com.sukisu.ultra.ui.component.miuix.AppCard
+import com.sukisu.ultra.ui.component.miuix.AppScaffold
+import com.sukisu.ultra.ui.component.profile.TemporaryRootControls
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -31,6 +34,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountCircle
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +48,13 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import com.sukisu.ultra.ui.util.customText
+import com.sukisu.ultra.ui.util.CustomTextKey
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -59,7 +70,9 @@ import com.sukisu.ultra.ui.component.profile.AppProfileConfig
 import com.sukisu.ultra.ui.component.profile.RootProfileConfig
 import com.sukisu.ultra.ui.component.profile.TemplateConfig
 import com.sukisu.ultra.ui.component.statustag.StatusTag
+import com.sukisu.ultra.ui.theme.LocalBackgroundImagePath
 import com.sukisu.ultra.ui.theme.LocalEnableBlur
+import com.sukisu.ultra.ui.theme.backgroundAwareColor
 import com.sukisu.ultra.ui.util.BlurredBar
 import com.sukisu.ultra.ui.util.listAppProfileTemplates
 import com.sukisu.ultra.ui.util.ownerNameForUid
@@ -67,17 +80,20 @@ import com.sukisu.ultra.ui.util.rememberBlurBackdrop
 import com.sukisu.ultra.ui.util.setSepolicy
 import com.sukisu.ultra.ui.viewmodel.SuperUserViewModel
 import top.yukonga.miuix.kmp.basic.BasicComponent
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.ListPopupColumn
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.PopupPositionProvider
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
-import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Switch
+import androidx.compose.foundation.layout.offset
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.unit.IntOffset
+import com.sukisu.ultra.ui.viewmodel.getTemplateInfoById
+import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
@@ -105,8 +121,9 @@ fun AppProfileScreenMiuix(
     val scrollBehavior = MiuixScrollBehavior()
     val backdrop = rememberBlurBackdrop(enableBlur)
     val blurActive = backdrop != null
-    val barColor = if (blurActive) Color.Transparent else colorScheme.surface
-    Scaffold(
+    val hasCustomBackground = LocalBackgroundImagePath.current.isNotEmpty()
+    val barColor = if (blurActive || hasCustomBackground) Color.Transparent else colorScheme.surface
+    AppScaffold(
         topBar = {
             TopBar(
                 onBack = actions.onBack,
@@ -161,6 +178,10 @@ fun AppProfileScreenMiuix(
                         onViewTemplate = actions.onViewTemplate,
                         onManageTemplate = actions.onManageTemplate,
                         onProfileChange = actions.onProfileChange,
+                        onPermanentRootChange = actions.onPermanentRootChange,
+                        temporaryRoot = state.temporaryRoot,
+                        onTemporaryRootChange = actions.onTemporaryRootChange,
+                        onTemporaryRootGrant = actions.onTemporaryRootGrant,
                     )
                     Spacer(
                         Modifier.height(
@@ -185,6 +206,10 @@ private fun AppProfileInner(
     appVersionName: String,
     appVersionCode: Long,
     profile: Natives.Profile,
+    onPermanentRootChange: (Boolean) -> Unit = {},
+    temporaryRoot: Boolean = false,
+    onTemporaryRootChange: (Boolean) -> Unit = {},
+    onTemporaryRootGrant: (Long?) -> Unit = {},
     isUidGroup: Boolean = false,
     isSpecialApp: Boolean = false,
     affectedApps: List<SuperUserViewModel.AppInfo> = emptyList(),
@@ -278,16 +303,20 @@ private fun AppProfileInner(
 
         if (!isSpecialApp) {
             val checked = isRootGranted
-            Card(
+            AppCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp)
-                    .padding(top = 4.dp, bottom = 12.dp),
+                    .padding(top = 4.dp, bottom = 12.dp)
+                    .semantics {
+                        role = Role.Switch
+                        toggleableState = ToggleableState(checked)
+                    },
                 colors = CardDefaults.defaultColors(
-                    color = if (checked) colorScheme.primary else colorScheme.surfaceContainer
+                    color = if (checked) colorScheme.primary else backgroundAwareColor(colorScheme.surfaceContainer)
                 ),
                 insideMargin = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
-                onClick = { onProfileChange(profile.copy(allowSu = !checked)) },
+                onClick = { onPermanentRootChange(!checked) },
                 pressFeedbackType = PressFeedbackType.Sink,
             ) {
                 Row(
@@ -302,7 +331,7 @@ private fun AppProfileInner(
                             color = if (checked) colorScheme.onPrimary else colorScheme.onSurface,
                         )
                         Text(
-                            text = dropdownMode.text,
+                            text = if (isRootGranted && temporaryRoot) stringResource(R.string.temporary_root_active) else dropdownMode.text,
                             fontSize = 13.sp,
                             color = if (checked) {
                                 colorScheme.onPrimary.copy(alpha = 0.75f)
@@ -311,12 +340,18 @@ private fun AppProfileInner(
                             },
                         )
                     }
-                    Switch(
-                        checked = checked,
-                        onCheckedChange = { onProfileChange(profile.copy(allowSu = it)) },
-                    )
+                    SuperuserSwitch(checked = checked)
                 }
             }
+        }
+
+        if (!isSpecialApp) {
+            TemporaryRootControls(
+                enabled = temporaryRoot,
+                granted = isRootGranted,
+                onEnabledChange = onTemporaryRootChange,
+                onChoose = onTemporaryRootGrant,
+            )
         }
 
         ProfileBox(dropdownMode, isRootGranted) { mode ->
@@ -335,7 +370,7 @@ private fun AppProfileInner(
                     Mode.Template -> {
                         if (templates.isNotEmpty()) {
                             val selected = profile.rootTemplate ?: templates[0]
-                            val info = com.sukisu.ultra.ui.viewmodel.getTemplateInfoById(selected)
+                            val info = getTemplateInfoById(selected)
                             if (info != null && setSepolicy(selected, info.rules.joinToString("\n"))) {
                                 onProfileChange(
                                     profile.copy(
@@ -372,7 +407,7 @@ private fun AppProfileInner(
             enter = fadeIn() + expandVertically(),
             exit = fadeOut() + shrinkVertically()
         ) {
-            Card(
+            AppCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp)
@@ -409,7 +444,7 @@ private fun AppProfileInner(
             enter = fadeIn() + expandVertically(),
             exit = fadeOut() + shrinkVertically()
         ) {
-            Card(
+            AppCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp)
@@ -435,7 +470,7 @@ private fun AppProfileInner(
                 text = stringResource(R.string.app_profile_affects_following_apps),
                 modifier = Modifier.padding(top = 4.dp)
             )
-            Card(
+            AppCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp)
@@ -480,7 +515,7 @@ private fun TopBar(
     BlurredBar(backdrop) {
         TopAppBar(
             color = barColor,
-            title = stringResource(R.string.profile),
+            title = customText(CustomTextKey.PAGE_APP_PROFILE),
             navigationIcon = {
                 IconButton(
                     onClick = onBack
@@ -577,13 +612,13 @@ private fun ProfileBox(
         }
     }
     val selectedIndex = modesAndTitles.indexOfFirst { it.first == mode }
-    Card(
+    AppCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp),
     ) {
         OverlayDropdownPreference(
-            title = stringResource(R.string.profile),
+            title = customText(CustomTextKey.PAGE_APP_PROFILE),
             items = list,
             startAction = {
                 Icon(
@@ -596,6 +631,37 @@ private fun ProfileBox(
             selectedIndex = if (selectedIndex == -1) 0 else selectedIndex,
         ) {
             onModeChange(modesAndTitles[it].first)
+        }
+    }
+}
+/** Local decoration for the superuser card; other Miuix switches stay unchanged. */
+@Composable
+private fun SuperuserSwitch(checked: Boolean) {
+    // Match the thumb geometry and spring in Miuix 0.9.4. Keep the icon in
+    // logical start coordinates so that it follows the thumb in RTL as well.
+    val thumbOffset by animateDpAsState(
+        targetValue = if (checked) 25.dp else 4.dp,
+        animationSpec = spring(dampingRatio = 0.7f, stiffness = 987f),
+        label = "superuser_check_offset",
+    )
+    Box(Modifier.size(width = 49.dp, height = 28.dp)) {
+        // The enclosing card owns the click action and switch semantics.
+        Switch(checked = checked, onCheckedChange = null)
+        if (checked) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .offset { IntOffset(thumbOffset.roundToPx(), 0) }
+                    .size(20.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Check,
+                    contentDescription = null,
+                    tint = colorScheme.primary,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
         }
     }
 }

@@ -2,26 +2,42 @@ package com.sukisu.ultra.ui.viewmodel
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Parcelable
+import androidx.core.content.edit
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import androidx.lifecycle.viewModelScope
 import com.sukisu.ultra.data.repository.SettingsRepository
 import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
 import com.sukisu.ultra.ksuApp
 import com.sukisu.ultra.ui.UiMode
 import com.sukisu.ultra.ui.theme.ThemeController
+import com.sukisu.ultra.ui.util.ImageStorage
+import java.io.File
+import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.parcelize.Parcelize
 
 class MainActivityViewModel(
-    savedStateHandle: SavedStateHandle,
+    private val savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
-    private val prefs = ksuApp.getSharedPreferences("settings", Context.MODE_PRIVATE)
+    private val prefs = ksuApp.getSharedPreferences(SETTINGS_PREFS, Context.MODE_PRIVATE)
     private val settingRepo: SettingsRepository = SettingsRepositoryImpl()
     private val mainPageState = MainPageState(savedStateHandle)
+    @Volatile private var systemWallpaperCacheValidated = false
     private val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == null || key in observedKeys) {
+            if (key == "use_system_wallpaper") {
+                if (settingRepo.useSystemWallpaper) {
+                    refreshSystemWallpaper()
+                } else {
+                    systemWallpaperCacheValidated = false
+                }
+            }
             _uiState.value = readUiState()
         }
     }
@@ -29,6 +45,10 @@ class MainActivityViewModel(
     private val _uiState = MutableStateFlow(readUiState())
     val uiState: StateFlow<MainActivityUiState> = _uiState.asStateFlow()
     val selectedMainPage: StateFlow<Int> = mainPageState.selectedPage
+
+    private val _pageRequest = MutableStateFlow(savedStateHandle.get<MainPageRequest>(PAGE_REQUEST_KEY))
+    val pageRequest: StateFlow<MainPageRequest?> = _pageRequest.asStateFlow()
+    private val requestToken = AtomicLong(System.currentTimeMillis())
 
     init {
         prefs.registerOnSharedPreferenceChangeListener(listener)
@@ -42,7 +62,60 @@ class MainActivityViewModel(
         mainPageState.updateSelectedPage(page)
     }
 
+    /**
+     * Select a main tab and, for the Settings tab, request a section scroll.
+     * The token makes repeated requests for the same page observable.
+     */
+    fun openMainPage(page: Int, section: String? = null) {
+        mainPageState.updateSelectedPage(page)
+        if (section.isNullOrBlank()) {
+            _pageRequest.value = null
+            savedStateHandle[PAGE_REQUEST_KEY] = null
+            return
+        }
+        val request = MainPageRequest(
+            page = MainPagerConfig.coercePage(page),
+            section = section,
+            token = requestToken.incrementAndGet(),
+        )
+        _pageRequest.value = request
+        savedStateHandle[PAGE_REQUEST_KEY] = request
+    }
+
+    fun consumePageRequest(token: Long) {
+        if (_pageRequest.value?.token == token) {
+            _pageRequest.value = null
+            savedStateHandle[PAGE_REQUEST_KEY] = null
+        }
+    }
+
+    /**
+     * Keeps the cached launcher wallpaper up to date while the option is enabled. The copy
+     * only runs when the system wallpaper file changed, so this is cheap on every resume.
+     */
+    fun refreshSystemWallpaper() {
+        if (!settingRepo.useSystemWallpaper) return
+        viewModelScope.launch {
+            val result = ImageStorage.captureSystemWallpaper(ksuApp, force = false)
+            systemWallpaperCacheValidated = result.path != null
+            if (result.changed) {
+                settingRepo.customBackgroundUpdatedAt = System.currentTimeMillis()
+                // A manually picked key color wins over the background, see SettingsViewModel.
+                if (settingRepo.extractColorFromBackground && settingRepo.keyColor == 0 && result.path != null) {
+                    settingRepo.keyColor = ImageStorage.extractSeedColor(File(result.path), settingRepo.keyColor)
+                }
+            }
+            if (result.path == null) {
+                settingRepo.useSystemWallpaper = false
+            }
+            _uiState.value = readUiState()
+        }
+    }
+
     private fun readUiState(): MainActivityUiState {
+        val useSystemWallpaper = settingRepo.useSystemWallpaper
+        val systemWallpaperPath = ImageStorage.systemWallpaperFile(ksuApp)
+            .takeIf { it.isFile }?.absolutePath.orEmpty()
         return MainActivityUiState(
             appSettings = ThemeController.getAppSettings(),
             pageScale = settingRepo.pageScale,
@@ -53,13 +126,38 @@ class MainActivityViewModel(
             enableSwipeDismiss = settingRepo.enableSwipeDismiss,
             pagerInterceptionMode = settingRepo.pagerInterceptionMode,
             moduleDescriptionMaxLines = settingRepo.moduleDescriptionMaxLines,
+            // The rest of the app only needs the effective background source.
+            customBackgroundUri = if (
+                useSystemWallpaper && systemWallpaperCacheValidated && systemWallpaperPath.isNotEmpty()
+            ) {
+                systemWallpaperPath
+            } else {
+                settingRepo.customBackgroundUri
+            },
+            customBackgroundUpdatedAt = settingRepo.customBackgroundUpdatedAt,
+            cardBackgroundAlphaPercent = settingRepo.cardBackgroundAlphaPercent,
+            customBackgroundBlurPercent = settingRepo.customBackgroundBlurPercent,
+            customBackgroundScrimPercent = settingRepo.customBackgroundScrimPercent,
+            // While the settings screen is scoring a background seed it parks the previous color
+            // here, so the palette can stay put instead of re-deriving an intermediate one.
+            keyColorOverride = prefs.getInt(KEY_COLOR_PENDING, NO_PENDING_SEED)
+                .takeIf { it != NO_PENDING_SEED },
             uiMode = UiMode.fromValue(settingRepo.uiMode),
+            customTexts = settingRepo.customTexts,
         )
     }
 
-    private companion object {
-        val observedKeys = setOf(
+    companion object {
+        const val SETTINGS_PREFS = "settings"
+
+        /** Window-scoped only: holds the color to keep while a background seed is scoring. */
+        const val KEY_COLOR_PENDING = "key_color_pending"
+
+        private const val NO_PENDING_SEED = Int.MIN_VALUE
+
+        private val observedKeys = setOf(
             "color_mode",
+            "miuix_monet",
             "key_color",
             "color_style",
             "color_spec",
@@ -71,12 +169,28 @@ class MainActivityViewModel(
             "enable_navigation_badge",
             "enable_swipe_dismiss",
             "pager_interception_mode",
+            "custom_bg_uri",
+            "custom_bg_updated_at",
+            "use_system_wallpaper",
+            "card_bg_alpha_percent",
+            "custom_bg_blur_percent",
+            "custom_bg_scrim_percent",
+            KEY_COLOR_PENDING,
             "ui_mode",
+            "custom_texts",
         )
     }
 }
 
+@Parcelize
+data class MainPageRequest(
+    val page: Int,
+    val section: String,
+    val token: Long,
+) : Parcelable
+
 private const val SELECTED_MAIN_PAGE_KEY = "selected_main_page"
+private const val PAGE_REQUEST_KEY = "main_page_request"
 
 private class MainPageState(
     private val savedStateHandle: SavedStateHandle,

@@ -217,24 +217,36 @@ def collect_existing_arches(apk_path: Path) -> List[str]:
 
 
 def find_ksud_lib_entries(apk_path: Path) -> Dict[str, str]:
-    """Map arch -> ksud library entry name inside the APK.
+    """Map arch -> ksud daemon entry name inside the APK.
 
-    The ksud library is by far the largest .so in the APK (multi-MB versus
-    a few KB for the other JNI libraries), and spoofed builds randomize its
-    file name, so detect it by size instead of by a fixed name.
+    Prefer the historical ``libksud.so`` name so unmodified APKs behave
+    exactly as before. Release builds randomize the ksud daemon file name,
+    so for arches without that name fall back to the largest ``.so``: the
+    ksud daemon is multi-MB while the JNI bridges are a few KB, which makes
+    the size check unambiguous.
     """
-    result: Dict[str, str] = {}
+    named: Dict[str, str] = {}
+    largest: Dict[str, Tuple[int, str]] = {}
     with ZipFile(apk_path, "r") as zin:
         for info in zin.infolist():
             name = info.filename
             if not (name.startswith("lib/") and name.endswith(".so")):
                 continue
-            if info.file_size < 1_000_000:
-                continue
             parts = name.split("/")
-            if len(parts) >= 3 and parts[1]:
-                result.setdefault(parts[1], name)
-    return result
+            if len(parts) < 3 or not parts[1]:
+                continue
+            arch = parts[1]
+            if parts[2] == "libksud.so":
+                named[arch] = name
+                continue
+            previous = largest.get(arch)
+            if info.file_size >= 1_000_000 and (
+                previous is None or info.file_size > previous[0]
+            ):
+                largest[arch] = (info.file_size, name)
+    for arch, (_, name) in largest.items():
+        named.setdefault(arch, name)
+    return named
 
 
 def strip_binary(src: Path, strip_tool: Path, tmp_dir: Path) -> bytes:
@@ -270,8 +282,8 @@ def repack_apk(
                     if len(parts) >= 3 and parts[1] not in arch_filters:
                         continue
 
-                # Drop the original ksud library only for arches that have a
-                # replacement binary (its name may be randomized by spoofing).
+                # Drop the original ksud daemon only for arches that have a
+                # replacement binary (its name may be randomized per build).
                 if name.startswith("lib/") and name.endswith(".so"):
                     parts = name.split("/")
                     if (
@@ -282,6 +294,15 @@ def repack_apk(
                         continue
 
                 data = zin.read(name)
+                if strip_tool is not None and name.startswith("lib/") and name.endswith(".so"):
+                    if data.startswith(b"\x7fELF") and len(data) > 200_000:
+                        tmp_so = Path(tmp_dir) / Path(name).name
+                        tmp_so.write_bytes(data)
+                        try:
+                            run_cmd([str(strip_tool), "--strip-all", str(tmp_so)], "strip failed")
+                            data = tmp_so.read_bytes()
+                        except Exception:
+                            pass
                 new_info = ZipInfo(filename=name, date_time=info.date_time)
                 new_info.compress_type = info.compress_type
                 new_info.external_attr = info.external_attr
@@ -316,7 +337,7 @@ def assert_required_libs(apk_path: Path, arch_filters: List[str]) -> None:
     missing = [arch for arch in arch_filters if arch not in ksud_entries]
     if missing:
         raise RuntimeError(
-            "Missing ksud library in APK for architecture(s): " + ", ".join(missing)
+            "Missing ksud daemon in APK for architecture(s): " + ", ".join(missing)
         )
 
 
@@ -358,13 +379,13 @@ def do_repack(args: argparse.Namespace) -> int:
         missing_in_apk = [arch for arch in missing_ksud_arches if arch not in existing_ksud_arches]
         if missing_in_apk:
             raise RuntimeError(
-                "ksud binary not found and APK has no existing ksud library for architecture(s): "
+                "ksud binary not found and APK has no existing ksud daemon for architecture(s): "
                 + ", ".join(missing_in_apk)
             )
         print(
             "[WARN] ksud binary not found for architecture(s): "
             + ", ".join(missing_ksud_arches)
-            + ". Using existing ksud library from input APK.",
+            + ". Using existing ksud daemon from input APK.",
             file=sys.stderr,
         )
 
@@ -481,7 +502,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="strip",
         action="store_true",
         default=None,
-        help="Strip libksud.so before packing (uses NDK llvm-strip)",
+        help="Strip the packaged ksud daemon before packing (uses NDK llvm-strip)",
     )
     strip_group.add_argument(
         "--no-strip",

@@ -1,5 +1,11 @@
 package com.sukisu.ultra.ui.screen.install
 
+import com.sukisu.ultra.ui.component.miuix.AppCard
+import com.sukisu.ultra.ui.component.miuix.AppScaffold
+import com.sukisu.ultra.ui.kernelFlash.KpmPatchOption
+import com.sukisu.ultra.ui.util.customText
+import com.sukisu.ultra.ui.util.CustomTextKey
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -32,7 +38,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircleOutline
 import androidx.compose.material.icons.filled.SdStorage
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -54,22 +59,19 @@ import androidx.compose.ui.unit.sp
 import com.sukisu.ultra.R
 import com.sukisu.ultra.getKernelVersion
 import com.sukisu.ultra.ui.component.dialog.rememberConfirmDialog
-import com.sukisu.ultra.ui.kernelFlash.KpmPatchOption
-import com.sukisu.ultra.ui.kernelFlash.KpmPatchSelectionDialog
-import com.sukisu.ultra.ui.kernelFlash.component.SlotSelectionDialog
+import com.sukisu.ultra.ui.theme.LocalBackgroundImagePath
 import com.sukisu.ultra.ui.theme.LocalEnableBlur
+import com.sukisu.ultra.ui.theme.backgroundAwareColor
 import com.sukisu.ultra.ui.util.BlurredBar
 import com.sukisu.ultra.ui.util.LkmSelection
 import com.sukisu.ultra.ui.util.rememberBlurBackdrop
 import com.sukisu.ultra.ui.util.isAbDevice
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.SnackbarHost
@@ -109,7 +111,8 @@ internal fun InstallScreenMiuix(
     val scrollBehavior = MiuixScrollBehavior()
     val backdrop = rememberBlurBackdrop(enableBlur)
     val blurActive = backdrop != null
-    val barColor = if (blurActive) Color.Transparent else colorScheme.surface
+    val hasCustomBackground = LocalBackgroundImagePath.current.isNotEmpty()
+    val barColor = if (blurActive || hasCustomBackground) Color.Transparent else colorScheme.surface
     val isAbDevice by produceState(initialValue = false) {
         value = isAbDevice()
     }
@@ -117,30 +120,7 @@ internal fun InstallScreenMiuix(
         value = getKernelVersion().isGKI()
     }
 
-    // 槽位选择对话框
-    if (uiState.showSlotSelectionDialog && isAbDevice) {
-        SlotSelectionDialog(
-            show = true,
-            onDismiss = { uiState.anyKernel3State?.onDismissSlotDialog() },
-            onSlotSelected = { slot ->
-                uiState.anyKernel3State?.onSlotSelected(slot)
-            }
-        )
-    }
-
-    // KPM补丁选择对话框
-    if (uiState.showKpmPatchDialog) {
-        KpmPatchSelectionDialog(
-            show = true,
-            currentOption = uiState.kpmPatchOption,
-            onDismiss = { uiState.anyKernel3State?.onDismissPatchDialog() },
-            onOptionSelected = { option ->
-                uiState.anyKernel3State?.onOptionSelected(option)
-            }
-        )
-    }
-
-    Scaffold(
+    AppScaffold(
         topBar = {
             TopBar(
                 onBack = actions.onBack,
@@ -171,7 +151,7 @@ internal fun InstallScreenMiuix(
                 overscrollEffect = null,
             ) {
                 item {
-                    Card(
+                    AppCard(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         SelectInstallMethod(
@@ -197,7 +177,7 @@ internal fun InstallScreenMiuix(
                         } else {
                             uiState.partitionSelectionIndex
                         }
-                        Card(
+                        AppCard(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(top = 12.dp),
@@ -227,7 +207,7 @@ internal fun InstallScreenMiuix(
                         enter = expandVertically(),
                         exit = shrinkVertically()
                     ) {
-                        Card(
+                        AppCard(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(top = 12.dp),
@@ -243,7 +223,7 @@ internal fun InstallScreenMiuix(
 
                     // LKM 上传（仅 GKI）
                     if (isGkiDevice && uiState.installMethod !is InstallMethod.HorizonKernel) {
-                        Card(
+                        AppCard(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(top = 12.dp),
@@ -295,7 +275,58 @@ internal fun InstallScreenMiuix(
                         }
                     }
 
-                    Card(
+                    if (uiState.canPatchKpm) {
+                        AppCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp),
+                        ) {
+                            OverlayDropdownPreference(
+                                title = stringResource(R.string.install_kpm_operation),
+                                summary = stringResource(R.string.install_kpm_summary),
+                                items = listOf(stringResource(R.string.kpm_follow_kernel_file), stringResource(R.string.enable_kpm_patch), stringResource(R.string.enable_kpm_undo_patch)),
+                                selectedIndex = KpmPatchOption.entries.indexOf(uiState.kpmPatchOption),
+                                onSelectedIndexChange = { actions.onKpmOptionChange(KpmPatchOption.entries[it]) },
+                            )
+                            AnimatedVisibility(visible = uiState.canSelectKpmBoot) {
+                                Column {
+                                    BasicComponent(
+                                        title = stringResource(R.string.install_kpm_manual),
+                                        summary = uiState.kpmBootUri?.lastPathSegment
+                                            ?: stringResource(
+                                                if (uiState.installMethod == null) R.string.install_kpm_auto_current_boot
+                                                else R.string.install_kpm_auto
+                                            ),
+                                        onClick = actions.onToggleKpmBoot,
+                                        endActions = {
+                                            Icon(
+                                                if (uiState.kpmBootExpanded) MiuixIcons.ExpandLess else MiuixIcons.ExpandMore,
+                                                contentDescription = stringResource(R.string.expand),
+                                                modifier = Modifier.size(16.dp),
+                                            )
+                                        },
+                                    )
+                                    AnimatedVisibility(visible = uiState.kpmBootExpanded) {
+                                        Column {
+                                            BasicComponent(
+                                                title = stringResource(R.string.select_file),
+                                                summary = uiState.kpmBootUri?.lastPathSegment,
+                                                onClick = actions.onPatchKpmFile,
+                                            )
+                                            if (uiState.kpmBootUri != null) {
+                                                BasicComponent(
+                                                    title = stringResource(R.string.install_kpm_clear),
+                                                    onClick = actions.onClearKpmBoot,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    AppCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 12.dp),
@@ -405,7 +436,7 @@ internal fun InstallScreenMiuix(
                     // AnyKernel3 刷写
                     (uiState.installMethod as? InstallMethod.HorizonKernel)?.let { method ->
                         if (isAbDevice && method.slot != null) {
-                            Card(
+                            AppCard(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(top = 12.dp),
@@ -430,36 +461,6 @@ internal fun InstallScreenMiuix(
                                 )
                             }
                         }
-
-                        // KPM 状态显示
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 12.dp),
-                        ) {
-                            ArrowPreference(
-                                title = when (uiState.kpmPatchOption) {
-                                    KpmPatchOption.PATCH_KPM -> stringResource(R.string.kpm_patch_enabled)
-                                    KpmPatchOption.UNDO_PATCH_KPM -> stringResource(R.string.kpm_undo_patch_enabled)
-                                    KpmPatchOption.FOLLOW_KERNEL -> stringResource(R.string.kpm_follow_kernel_file)
-                                },
-                                onClick = {
-                                    actions.onReopenKpmDialog(method)
-                                },
-                                startAction = {
-                                    Icon(
-                                        Icons.Filled.Security,
-                                        tint = when (uiState.kpmPatchOption) {
-                                            KpmPatchOption.PATCH_KPM -> colorScheme.primary
-                                            KpmPatchOption.UNDO_PATCH_KPM -> colorScheme.secondary
-                                            KpmPatchOption.FOLLOW_KERNEL -> colorScheme.onSurfaceVariantSummary
-                                        },
-                                        modifier = Modifier.padding(end = 16.dp),
-                                        contentDescription = null
-                                    )
-                                }
-                            )
-                        }
                     }
                     
                     TextButton(
@@ -467,7 +468,7 @@ internal fun InstallScreenMiuix(
                                 .fillMaxWidth()
                                 .padding(top = 12.dp),
                             text = stringResource(id = R.string.install_next),
-                            enabled = uiState.installMethod != null && uiState.blockModulesValid,
+                            enabled = uiState.canInstall,
                             colors = ButtonDefaults.textButtonColorsPrimary(),
                             onClick = actions.onNext
                         )
@@ -516,12 +517,12 @@ private fun SelectInstallMethod(
     ) {
         state.installMethodOptions.forEach { option ->
             val selected = state.installMethod?.let { option::class == it::class } ?: false
-            Card(
+            AppCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .semantics { role = Role.RadioButton; this.selected = selected },
                 colors = CardDefaults.defaultColors(
-                    color = if (selected) colorScheme.secondaryContainer else colorScheme.surfaceContainer
+                    color = if (selected) colorScheme.secondaryContainer else backgroundAwareColor(colorScheme.surfaceContainer)
                 ),
                 insideMargin = PaddingValues(0.dp),
                 onClick = { onClick(option) },
@@ -577,7 +578,7 @@ private fun TopBar(
     BlurredBar(backdrop) {
         TopAppBar(
             color = barColor,
-            title = stringResource(R.string.install),
+            title = customText(CustomTextKey.PAGE_INSTALL),
             navigationIcon = {
                 IconButton(
                     onClick = onBack

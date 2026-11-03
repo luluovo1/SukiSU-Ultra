@@ -9,6 +9,8 @@ import com.sukisu.ultra.Natives
 import com.sukisu.ultra.R
 import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
 import com.sukisu.ultra.ui.LocalMainPagerState
+import com.sukisu.ultra.ui.theme.backgroundAwareColor
+import com.sukisu.ultra.ui.util.customText
 import top.yukonga.miuix.kmp.basic.NavigationRail
 import top.yukonga.miuix.kmp.basic.NavigationRailItem
 import top.yukonga.miuix.kmp.basic.NavigationRailValue
@@ -26,7 +28,7 @@ fun NavigationRailMiuix(
     val mainState = LocalMainPagerState.current
 
     val items = BottomBarDestination.entries.map { destination ->
-        Pair(stringResource(destination.label), destination.icon)
+        Pair(customText(destination.textKey), destination.icon)
     }
     val settingsRepo = remember { SettingsRepositoryImpl() }
     val state = rememberNavigationRailState(
@@ -43,7 +45,7 @@ fun NavigationRailMiuix(
     NavigationRail(
         modifier = modifier,
         state = state,
-        color = MiuixTheme.colorScheme.surface,
+        color = backgroundAwareColor(MiuixTheme.colorScheme.surface),
         expandContentDescription = stringResource(R.string.nav_rail_expand),
         collapseContentDescription = stringResource(R.string.nav_rail_collapse),
     ) {

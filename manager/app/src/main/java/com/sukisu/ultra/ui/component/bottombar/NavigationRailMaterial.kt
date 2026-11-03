@@ -33,6 +33,9 @@ import androidx.compose.material3.rememberWideNavigationRailState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
+import com.sukisu.ultra.ui.theme.LocalBackgroundImagePath
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -42,6 +45,8 @@ import com.sukisu.ultra.Natives
 import com.sukisu.ultra.R
 import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
 import com.sukisu.ultra.ui.LocalMainPagerState
+import com.sukisu.ultra.ui.util.CustomTextKey
+import com.sukisu.ultra.ui.util.customText
 
 @Composable
 fun NavigationRailMaterial(
@@ -54,10 +59,10 @@ fun NavigationRailMaterial(
     val mainPagerState = LocalMainPagerState.current
 
     val items = listOf(
-        Triple(R.string.home, Icons.Filled.Home, Icons.Outlined.Home),
-        Triple(R.string.superuser, Icons.Filled.Shield, Icons.Outlined.Shield),
-        Triple(R.string.module, Icons.Filled.Extension, Icons.Outlined.Extension),
-        Triple(R.string.settings, Icons.Filled.Settings, Icons.Outlined.Settings)
+        Triple(CustomTextKey.PAGE_HOME, Icons.Filled.Home, Icons.Outlined.Home),
+        Triple(CustomTextKey.PAGE_SUPERUSER, Icons.Filled.Shield, Icons.Outlined.Shield),
+        Triple(CustomTextKey.PAGE_MODULES, Icons.Filled.Extension, Icons.Outlined.Extension),
+        Triple(CustomTextKey.PAGE_SETTINGS, Icons.Filled.Settings, Icons.Outlined.Settings)
     )
 
     val settingsRepo = remember { SettingsRepositoryImpl() }
@@ -75,11 +80,12 @@ fun NavigationRailMaterial(
             state.targetValue == WideNavigationRailValue.Expanded
     }
 
+    val hasCustomBackground = LocalBackgroundImagePath.current.isNotEmpty()
     WideNavigationRail(
         modifier = modifier.fillMaxHeight(),
         state = state,
         colors = WideNavigationRailDefaults.colors().copy(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            containerColor = if (hasCustomBackground) Color.Transparent else MaterialTheme.colorScheme.surfaceContainer,
             contentColor = MaterialTheme.colorScheme.onSurface,
         ),
         windowInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout).only(
@@ -117,11 +123,17 @@ fun NavigationRailMaterial(
                 icon = {
                     NavigationIconWithBadge(
                         icon = if (selected) selectedIcon else unselectedIcon,
-                        contentDescription = stringResource(label),
+                        contentDescription = customText(label),
                         badge = badgeFor(index, navigationBadge),
                     )
                 },
-                label = { Text(stringResource(label)) },
+                label = {
+                    Text(
+                        text = customText(label),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
                 colors = WideNavigationRailItemDefaults.colors().copy(
                     selectedIndicatorColor = MaterialTheme.colorScheme.primary,
                     selectedIconColor = MaterialTheme.colorScheme.onPrimary,
